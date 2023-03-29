@@ -1,7 +1,13 @@
 [package]
 name = "cmprss"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
+authors = ["Patrick Jackson <patrick@jackson.dev>"]
+readme = "README.md"
+license = "MIT"
+description = "(UNIMPLEMENTED) cmprss - a compression tool for the CLI"
+repository = "https://github.com/patricksjackson/cmprss"
+homepage = "https://github.com/patricksjackson/cmprss"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
