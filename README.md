@@ -1,3 +1,7 @@
 # cmprss
 
-(UNIMPLEMENTED) A compression tool for the CLI
+(UNIMPLEMENTED) A compression multi-tool for the CLI
+
+## Supported formats
+
+- tar (compress only)
