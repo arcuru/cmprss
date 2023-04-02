@@ -68,7 +68,8 @@
               rustfmt.enable = true;
 
               # Ensure no clippy warnings exist
-              clippy.enable = true;
+              # FIXME: Re-enable. Fails due to mismatched compiler versions because of the devToolchain
+              #clippy.enable = true;
 
               # Runs `cargo check` to look for errors
               cargo-check.enable = true;
