@@ -48,6 +48,7 @@
 
         devShells.default = pkgs.mkShell {
           inherit (self.checks.${system}.pre-commit-check) shellHook;
+          name = "cmprss";
 
           # Rust Analyzer needs to be able to find the path to default crate
           # sources, and it can read this environment variable to do so. The
