@@ -23,6 +23,7 @@ enum Format {
     Extract(ExtractArgs),
 
     /// gzip compression
+    #[clap(visible_alias = "gz")]
     Gzip(GzipArgs),
 }
 
