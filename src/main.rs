@@ -1,3 +1,4 @@
+mod gzip;
 mod tar;
 
 use clap::{Args, Parser, Subcommand};
@@ -20,6 +21,9 @@ enum Format {
 
     /// extract by guessing the format
     Extract(ExtractArgs),
+
+    /// gzip compression
+    Gzip(GzipArgs),
 }
 
 #[derive(Args, Debug)]
@@ -40,8 +44,6 @@ struct TarArgs {
     input: String,
 
     /// Output file/directory
-    ///
-    /// If it's not provided, the extension is inferred from the compression type.
     #[arg(index = 2)]
     output: Option<String>,
 
@@ -49,9 +51,34 @@ struct TarArgs {
     #[arg(short, long)]
     compress: bool,
 
-    /// Extract the input file
+    /// Extract the input
     #[arg(short, long)]
     extract: bool,
+}
+
+#[derive(Args, Debug)]
+struct GzipArgs {
+    /// Input file
+    #[arg(index = 1)]
+    input: String,
+
+    /// Output file/directory
+    #[arg(index = 2)]
+    output: Option<String>,
+
+    /// Compress the input (default)
+    #[arg(short, long)]
+    compress: bool,
+
+    /// Extract the input
+    #[arg(short, long)]
+    extract: bool,
+
+    /// Level of compression
+    ///
+    /// This is an int 0-9, with 0 being no compression and 9 being highest compression.
+    #[arg(long, default_value_t = 6)]
+    compression: u32,
 }
 
 /// Generates the output filename.
@@ -82,11 +109,34 @@ fn command_tar(args: TarArgs) {
         // Compress by default, warn if if looks like an archive.
         if input_path.extension().unwrap() == tar::EXT {
             println!(
-                "error: input appears to be a tar archive, exiting. Use '--compress' if needed."
+                "error: input appears to already be a tar archive, exiting. Use '--compress' if needed."
             )
         } else {
             let out = output_filename(input_path, args.output, tar::EXT);
             tar::compress_file(input_path, File::create(out).unwrap());
+        }
+    }
+}
+
+/// Execute a gzip command
+fn command_gzip(args: GzipArgs) {
+    let input_path = Path::new(&args.input);
+    if args.compress {
+        let out = output_filename(input_path, args.output, gzip::EXT);
+        gzip::compress_file(input_path, File::create(out).unwrap(), args.compression);
+    } else if args.extract {
+        assert!(args.output.is_some(), "error: output filename required");
+        gzip::extract_file(input_path, File::create(args.output.unwrap()).unwrap());
+    } else {
+        // Neither is set.
+        // Compress by default, warn if if looks like an archive.
+        if input_path.extension().unwrap() == gzip::EXT {
+            println!(
+                "error: input appears to already be a gzip archive, exiting. Use '--compress' if needed."
+            )
+        } else {
+            let out = output_filename(input_path, args.output, gzip::EXT);
+            gzip::compress_file(input_path, File::create(out).unwrap(), args.compression);
         }
     }
 }
@@ -107,6 +157,7 @@ fn main() {
     match args.format {
         Some(Format::Tar(a)) => command_tar(a),
         Some(Format::Extract(a)) => command_extract(a),
+        Some(Format::Gzip(a)) => command_gzip(a),
         None => println!("none"),
     };
 }
