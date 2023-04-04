@@ -4,10 +4,8 @@ use std::fs::File;
 use std::path::Path;
 use tar::{Archive, Builder};
 
-/// Return the standard extension for the tar format.
-pub fn extension() -> &'static str {
-    "tar"
-}
+/// The standard extension for the tar format.
+pub const EXT: &str = "tar";
 
 /// Compress an input file or directory into a tar archive.
 pub fn compress<I: AsRef<Path>, O: AsRef<Path>>(in_file: I, out_file: O) {

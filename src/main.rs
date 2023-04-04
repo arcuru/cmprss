@@ -1,12 +1,39 @@
 mod tar;
 
-use clap::Parser;
+use clap::{Args, Parser, Subcommand};
 use std::path::Path;
 
 /// A compression multi-tool
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-struct Args {
+struct CmprssArgs {
+    /// Format
+    #[command(subcommand)]
+    format: Option<Format>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Format {
+    /// tar archive format
+    Tar(TarArgs),
+
+    /// extract by guessing the format
+    Extract(ExtractArgs),
+}
+
+#[derive(Args, Debug)]
+struct ExtractArgs {
+    /// Input file
+    #[arg(index = 1)]
+    input: String,
+
+    /// Output file/directory
+    #[arg(index = 2)]
+    output: Option<String>,
+}
+
+#[derive(Args, Debug)]
+struct TarArgs {
     /// Input file
     #[arg(index = 1)]
     input: String,
@@ -17,11 +44,11 @@ struct Args {
     #[arg(index = 2)]
     output: Option<String>,
 
-    /// Compress the input
+    /// Compress the input (default)
     #[arg(short, long)]
     compress: bool,
 
-    /// Extract the input
+    /// Extract the input file
     #[arg(short, long)]
     extract: bool,
 }
@@ -41,21 +68,44 @@ fn output_filename(input: &Path, output: Option<String>, extension: &str) -> Str
     }
 }
 
-fn main() {
-    let args = Args::parse();
+/// Execute a tar command
+fn command_tar(args: TarArgs) {
     let input_path = Path::new(&args.input);
     if args.compress {
-        let out = output_filename(input_path, args.output, tar::extension());
+        let out = output_filename(input_path, args.output, tar::EXT);
         tar::compress(input_path, out);
     } else if args.extract {
         tar::extract(input_path, args.output.unwrap_or(".".to_string()));
     } else {
-        // Neither set, so infer based on filename
-        if input_path.extension().unwrap() == tar::extension() {
-            tar::extract(input_path, args.output.unwrap_or(".".to_string()));
+        // Neither is set.
+        // Compress by default, warn if if looks like an archive.
+        if input_path.extension().unwrap() == tar::EXT {
+            println!(
+                "error: input appears to be a tar archive, exiting. Use '--compress' if needed."
+            )
         } else {
-            let out = output_filename(input_path, args.output, tar::extension());
+            let out = output_filename(input_path, args.output, tar::EXT);
             tar::compress(input_path, out);
         }
     }
+}
+
+/// Execute an extract command.
+///
+/// Attempts to extract based on the file extension.
+fn command_extract(args: ExtractArgs) {
+    let input_path = Path::new(&args.input);
+    match input_path.extension().unwrap().to_str().unwrap() {
+        tar::EXT => tar::extract(input_path, args.output.unwrap_or(".".to_string())),
+        _ => println!("error: unknown format "),
+    }
+}
+
+fn main() {
+    let args = CmprssArgs::parse();
+    match args.format {
+        Some(Format::Tar(a)) => command_tar(a),
+        Some(Format::Extract(a)) => command_extract(a),
+        None => println!("none"),
+    };
 }
