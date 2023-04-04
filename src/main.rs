@@ -1,6 +1,7 @@
 mod tar;
 
 use clap::{Args, Parser, Subcommand};
+use std::fs::File;
 use std::path::Path;
 
 /// A compression multi-tool
@@ -73,9 +74,9 @@ fn command_tar(args: TarArgs) {
     let input_path = Path::new(&args.input);
     if args.compress {
         let out = output_filename(input_path, args.output, tar::EXT);
-        tar::compress(input_path, out);
+        tar::compress_file(input_path, File::create(out).unwrap());
     } else if args.extract {
-        tar::extract(input_path, args.output.unwrap_or(".".to_string()));
+        tar::extract_file(input_path, args.output.unwrap_or(".".to_string()));
     } else {
         // Neither is set.
         // Compress by default, warn if if looks like an archive.
@@ -85,7 +86,7 @@ fn command_tar(args: TarArgs) {
             )
         } else {
             let out = output_filename(input_path, args.output, tar::EXT);
-            tar::compress(input_path, out);
+            tar::compress_file(input_path, File::create(out).unwrap());
         }
     }
 }
@@ -96,7 +97,7 @@ fn command_tar(args: TarArgs) {
 fn command_extract(args: ExtractArgs) {
     let input_path = Path::new(&args.input);
     match input_path.extension().unwrap().to_str().unwrap() {
-        tar::EXT => tar::extract(input_path, args.output.unwrap_or(".".to_string())),
+        tar::EXT => tar::extract_file(input_path, args.output.unwrap_or(".".to_string())),
         _ => println!("error: unknown format "),
     }
 }

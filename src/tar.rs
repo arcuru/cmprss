@@ -1,6 +1,7 @@
 extern crate tar;
 
 use std::fs::File;
+use std::io::{Read, Write};
 use std::path::Path;
 use tar::{Archive, Builder};
 
@@ -8,15 +9,10 @@ use tar::{Archive, Builder};
 pub const EXT: &str = "tar";
 
 /// Compress an input file or directory into a tar archive.
-pub fn compress<I: AsRef<Path>, O: AsRef<Path>>(in_file: I, out_file: O) {
+pub fn compress_file<I: AsRef<Path>, O: Write>(in_file: I, output: O) {
     let in_file = in_file.as_ref();
-    let out_file = out_file.as_ref();
-    println!(
-        "tar: Compressing {} into {}",
-        in_file.display(),
-        out_file.display()
-    );
-    let mut archive = Builder::new(File::create(out_file).unwrap());
+    println!("tar: Compressing {}", in_file.display());
+    let mut archive = Builder::new(output); //File::create(out_file).unwrap());
     if in_file.is_file() {
         archive
             .append_file(
@@ -32,15 +28,20 @@ pub fn compress<I: AsRef<Path>, O: AsRef<Path>>(in_file: I, out_file: O) {
     archive.finish().unwrap();
 }
 
-/// Extract the archive into the current directory
-pub fn extract<I: AsRef<Path>, O: AsRef<Path>>(in_file: I, out_directory: O) {
-    let in_file = in_file.as_ref();
+/// Extract the archive file into a directory
+pub fn extract_file<I: AsRef<Path>, O: AsRef<Path>>(input_file: I, out_directory: O) {
+    let input_file = input_file.as_ref();
     let out_directory = out_directory.as_ref();
     println!(
         "tar: Extracting {} into {}",
-        in_file.display(),
+        input_file.display(),
         out_directory.display()
     );
-    let mut archive = Archive::new(File::open(in_file).unwrap());
-    archive.unpack(out_directory).unwrap();
+    extract(File::open(input_file).unwrap(), out_directory);
+}
+
+/// Extract the archive into a directory
+pub fn extract<I: Read, O: AsRef<Path>>(input: I, out_directory: O) {
+    let mut archive = Archive::new(input);
+    archive.unpack(out_directory.as_ref()).unwrap();
 }
