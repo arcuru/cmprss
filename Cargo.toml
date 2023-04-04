@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["Patrick Jackson <patrick@jackson.dev>"]
 readme = "README.md"
 license = "MIT"
-description = "(UNIMPLEMENTED) cmprss - a compression tool for the CLI"
+description = "cmprss - a compression multi-tool for the CLI"
 repository = "https://github.com/patricksjackson/cmprss"
 homepage = "https://github.com/patricksjackson/cmprss"
 
