@@ -42,6 +42,12 @@ struct ExtractArgs {
 
 #[derive(Args, Debug)]
 struct TarArgs {
+    #[clap(flatten)]
+    common_args: CommonArgs,
+}
+
+#[derive(Args, Debug)]
+struct CommonArgs {
     /// Input file
     #[arg(index = 1)]
     input: String,
@@ -59,23 +65,23 @@ struct TarArgs {
     extract: bool,
 }
 
+impl CommonArgs {
+    /// Convert clap argument struct into utils::CmprssCommonArgs
+    /// This is done, perhaps unnecessarily, to keep clap out of the lib
+    fn into_common(self) -> CmprssCommonArgs {
+        CmprssCommonArgs {
+            compress: self.compress,
+            input: self.input,
+            output: self.output,
+            extract: self.extract,
+        }
+    }
+}
+
 #[derive(Args, Debug)]
 struct GzipArgs {
-    /// Input file
-    #[arg(index = 1)]
-    input: String,
-
-    /// Output file/directory
-    #[arg(index = 2)]
-    output: Option<String>,
-
-    /// Compress the input (default)
-    #[arg(short, long)]
-    compress: bool,
-
-    /// Extract the input
-    #[arg(short, long)]
-    extract: bool,
+    #[clap(flatten)]
+    common_args: CommonArgs,
 
     /// Level of compression
     ///
@@ -101,6 +107,7 @@ fn output_filename(input: &Path, output: &Option<String>, extension: &str) -> St
 
 /// Execute a tar command
 fn command_tar(args: TarArgs) {
+    let args = args.common_args;
     let input_path = Path::new(&args.input);
     if args.compress {
         let out = output_filename(input_path, &args.output, tar::EXT);
@@ -162,12 +169,7 @@ fn command_generic<T: CmprssArgTrait + CmprssRead + CmprssInfo>(compressor: T) {
 fn parse_gzip(args: GzipArgs) -> gzip::Gzip {
     gzip::Gzip {
         compression_level: args.compression,
-        common_args: CmprssCommonArgs {
-            compress: args.compress,
-            extract: args.extract,
-            input: args.input,
-            output: args.output,
-        },
+        common_args: args.common_args.into_common(),
     }
 }
 
