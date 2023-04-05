@@ -178,7 +178,6 @@ fn main() {
     match args.format {
         Some(Format::Tar(a)) => command_tar(a),
         Some(Format::Extract(a)) => command_extract(a),
-        //Some(Format::Gzip(a)) => command_gzip(a),
         Some(Format::Gzip(a)) => command_generic(parse_gzip(a)),
         None => println!("none"),
     };
