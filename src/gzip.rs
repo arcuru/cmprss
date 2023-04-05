@@ -1,5 +1,4 @@
-extern crate flate2;
-
+use crate::utils::*;
 use flate2::write::GzEncoder;
 use flate2::{read::GzDecoder, Compression};
 use std::fs::File;
@@ -9,25 +8,53 @@ use std::path::Path;
 /// The standard extension for the gzip format.
 pub const EXT: &str = "gz";
 
-pub fn compress_file<I: AsRef<Path>, O: Write>(in_file: I, output: O, level: u32) {
-    compress(File::open(in_file).unwrap(), output, level);
+pub struct Gzip {
+    pub compression_level: u32,
+    pub common_args: CmprssCommonArgs,
 }
 
-/// Compress an input file or directory into a gzip archive.
-pub fn compress<I: Read, O: Write>(mut input: I, output: O, level: u32) {
-    let mut encoder = GzEncoder::new(output, Compression::new(level));
-
-    std::io::copy(&mut input, &mut encoder).unwrap();
-    encoder.finish().unwrap();
+impl CmprssArgTrait for Gzip {
+    fn common_args(&self) -> &CmprssCommonArgs {
+        &self.common_args
+    }
 }
 
-/// Extract a gzipped file
-pub fn extract_file<I: AsRef<Path>, O: Write>(in_file: I, output: O) {
-    extract(File::open(in_file).unwrap(), output);
+impl CmprssInfo for Gzip {
+    /// The standard extension for the gzip format.
+    fn extension(&self) -> &str {
+        "gz"
+    }
+
+    /// Full name for gzip.
+    fn name(&self) -> &str {
+        "gzip"
+    }
 }
 
-/// Extract the gzip compressed data
-pub fn extract<I: Read, O: Write>(input: I, mut output: O) {
-    let mut decoder = GzDecoder::new(input);
-    std::io::copy(&mut decoder, &mut output).unwrap();
+impl CmprssFile for Gzip {
+    /// Compress an input file to gzip
+    fn compress_file<I: AsRef<Path>, O: Write>(&self, in_file: I, output: O) {
+        self.compress(File::open(in_file).unwrap(), output);
+    }
+
+    /// Extract a gzipped file
+    fn extract_file<I: AsRef<Path>, O: Write>(&self, in_file: I, output: O) {
+        self.extract(File::open(in_file).unwrap(), output);
+    }
+}
+
+impl CmprssRead for Gzip {
+    /// Compress an input file or directory into a gzip archive.
+    fn compress<I: Read, O: Write>(&self, mut input: I, output: O) {
+        let mut encoder = GzEncoder::new(output, Compression::new(self.compression_level));
+
+        std::io::copy(&mut input, &mut encoder).unwrap();
+        encoder.finish().unwrap();
+    }
+
+    /// Extract the gzip compressed data
+    fn extract<I: Read, O: Write>(&self, input: I, mut output: O) {
+        let mut decoder = GzDecoder::new(input);
+        std::io::copy(&mut decoder, &mut output).unwrap();
+    }
 }

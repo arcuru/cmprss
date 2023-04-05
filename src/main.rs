@@ -1,9 +1,11 @@
 mod gzip;
 mod tar;
+mod utils;
 
 use clap::{Args, Parser, Subcommand};
 use std::fs::File;
 use std::path::Path;
+use utils::*;
 
 /// A compression multi-tool
 #[derive(Parser, Debug)]
@@ -84,8 +86,8 @@ struct GzipArgs {
 
 /// Generates the output filename.
 /// This either takes the given name or guesses the name based on the extension
-fn output_filename(input: &Path, output: Option<String>, extension: &str) -> String {
-    match output {
+fn output_filename(input: &Path, output: &Option<String>, extension: &str) -> String {
+    match output.clone() {
         Some(file) => file,
         None => {
             format!(
@@ -101,7 +103,7 @@ fn output_filename(input: &Path, output: Option<String>, extension: &str) -> Str
 fn command_tar(args: TarArgs) {
     let input_path = Path::new(&args.input);
     if args.compress {
-        let out = output_filename(input_path, args.output, tar::EXT);
+        let out = output_filename(input_path, &args.output, tar::EXT);
         tar::compress_file(input_path, File::create(out).unwrap());
     } else if args.extract {
         tar::extract_file(input_path, args.output.unwrap_or(".".to_string()));
@@ -113,31 +115,8 @@ fn command_tar(args: TarArgs) {
                 "error: input appears to already be a tar archive, exiting. Use '--compress' if needed."
             )
         } else {
-            let out = output_filename(input_path, args.output, tar::EXT);
+            let out = output_filename(input_path, &args.output, tar::EXT);
             tar::compress_file(input_path, File::create(out).unwrap());
-        }
-    }
-}
-
-/// Execute a gzip command
-fn command_gzip(args: GzipArgs) {
-    let input_path = Path::new(&args.input);
-    if args.compress {
-        let out = output_filename(input_path, args.output, gzip::EXT);
-        gzip::compress_file(input_path, File::create(out).unwrap(), args.compression);
-    } else if args.extract {
-        assert!(args.output.is_some(), "error: output filename required");
-        gzip::extract_file(input_path, File::create(args.output.unwrap()).unwrap());
-    } else {
-        // Neither is set.
-        // Compress by default, warn if if looks like an archive.
-        if input_path.extension().unwrap() == gzip::EXT {
-            println!(
-                "error: input appears to already be a gzip archive, exiting. Use '--compress' if needed."
-            )
-        } else {
-            let out = output_filename(input_path, args.output, gzip::EXT);
-            gzip::compress_file(input_path, File::create(out).unwrap(), args.compression);
         }
     }
 }
@@ -153,12 +132,52 @@ fn command_extract(args: ExtractArgs) {
     }
 }
 
+/// Implement compression/extraction with a generic Compressor.
+fn command_generic<T: CmprssArgTrait + CmprssRead + CmprssInfo>(compressor: T) {
+    let args = compressor.common_args();
+    let input_path = Path::new(&args.input);
+    if args.compress {
+        let out = output_filename(input_path, &args.output, compressor.extension());
+        compressor.compress(File::open(input_path).unwrap(), File::create(out).unwrap());
+    } else if args.extract {
+        assert!(args.output.is_some(), "error: output filename required");
+        compressor.extract(
+            File::open(input_path).unwrap(),
+            File::create(args.output.clone().unwrap()).unwrap(),
+        );
+    } else {
+        // Neither is set.
+        // Compress by default, warn if if looks like an archive.
+        if input_path.extension().unwrap() == compressor.extension() {
+            println!(
+                "error: input appears to already be a {} archive, exiting. Use '--compress' if needed.", compressor.name()
+            )
+        } else {
+            let out = output_filename(input_path, &args.output, gzip::EXT);
+            compressor.compress(File::open(input_path).unwrap(), File::create(out).unwrap());
+        }
+    }
+}
+
+fn parse_gzip(args: GzipArgs) -> gzip::Gzip {
+    gzip::Gzip {
+        compression_level: args.compression,
+        common_args: CmprssCommonArgs {
+            compress: args.compress,
+            extract: args.extract,
+            input: args.input,
+            output: args.output,
+        },
+    }
+}
+
 fn main() {
     let args = CmprssArgs::parse();
     match args.format {
         Some(Format::Tar(a)) => command_tar(a),
         Some(Format::Extract(a)) => command_extract(a),
-        Some(Format::Gzip(a)) => command_gzip(a),
+        //Some(Format::Gzip(a)) => command_gzip(a),
+        Some(Format::Gzip(a)) => command_generic(parse_gzip(a)),
         None => println!("none"),
     };
 }
