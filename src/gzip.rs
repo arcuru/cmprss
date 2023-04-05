@@ -5,9 +5,6 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 
-/// The standard extension for the gzip format.
-pub const EXT: &str = "gz";
-
 pub struct Gzip {
     pub compression_level: u32,
     pub common_args: CmprssCommonArgs,

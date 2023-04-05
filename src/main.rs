@@ -160,7 +160,7 @@ fn command_generic<T: CmprssArgTrait + CmprssRead + CmprssInfo>(compressor: T) {
                 "error: input appears to already be a {} archive, exiting. Use '--compress' if needed.", compressor.name()
             )
         } else {
-            let out = output_filename(input_path, &args.output, gzip::EXT);
+            let out = output_filename(input_path, &args.output, compressor.extension());
             compressor.compress(File::open(input_path).unwrap(), File::create(out).unwrap());
         }
     }
