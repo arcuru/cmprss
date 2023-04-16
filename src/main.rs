@@ -3,6 +3,7 @@ mod tar;
 mod utils;
 
 use clap::{Args, Parser, Subcommand};
+use is_terminal::IsTerminal;
 use std::io;
 use std::path::Path;
 use utils::*;
@@ -112,8 +113,26 @@ fn compress_generic<T: Compressor>(compressor: T) -> Result<(), io::Error> {
     //  Remove if you've created a stub
     let args = compressor.common_args();
     let input_path = Path::new(&args.input);
-    let out = output_filename(input_path, &args.output, compressor.extension());
-    compressor.compress_path_to_path(input_path, out)
+
+    match &args.output {
+        Some(out) => {
+            // Output file specified, use that
+            println!("Compressing {} into {}", input_path.display(), out);
+            compressor.compress_path_to_path(input_path, out)?;
+        }
+        None => {
+            // No output filename. Send to stdout if stream or guess the filename
+            if std::io::stdout().is_terminal() {
+                let out = output_filename(input_path, &args.output, compressor.extension());
+                println!("Compressing {} into {}", input_path.display(), out);
+                compressor.compress_path_to_path(input_path, out)?;
+            } else {
+                // Stdout is a pipe, attempt to compress to that
+                compressor.compress_file(input_path, std::io::stdout())?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Implement compression/extraction with a generic Compressor.
@@ -123,11 +142,24 @@ fn command_generic<T: Compressor>(compressor: T) -> Result<(), io::Error> {
     if args.compress {
         compress_generic(compressor)?;
     } else if args.extract {
-        let output = match args.output.as_ref() {
-            Some(out) => out,
-            None => ".",
+        match &args.output {
+            Some(out) => {
+                // Output file specified, extract there
+                compressor.extract_path_to_path(input_path, out)?;
+            }
+            None => {
+                // No output file specified
+                if std::io::stdout().is_terminal() {
+                    compressor.extract_path_to_path(
+                        input_path,
+                        compressor.default_extracted_filename(input_path),
+                    )?;
+                } else {
+                    // Stdout is a pipe, extract to the pipe
+                    compressor.extract_file(input_path, std::io::stdout())?;
+                }
+            }
         };
-        compressor.extract_path_to_path(input_path, output)?;
     } else {
         // Neither is set.
         // Compress by default, warn if if looks like an archive.

@@ -114,6 +114,7 @@ version = "0.0.1"
 dependencies = [
  "clap",
  "flate2",
+ "is-terminal",
  "tar",
 ]
 

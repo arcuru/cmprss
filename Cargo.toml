@@ -15,4 +15,5 @@ homepage = "https://github.com/patricksjackson/cmprss"
 clap = { version = "4.2.1", features = ["derive"] }
 flate2 = "1.0"
 tar = "0.4.38"
+is-terminal = "0.4"
 

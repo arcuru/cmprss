@@ -20,6 +20,20 @@ pub trait Compressor {
         self.name()
     }
 
+    /// Generate the default name for the compressed file
+    fn default_compressed_filename(&self, in_path: &Path) -> String {
+        format!(
+            "{}.{}",
+            in_path.file_name().unwrap().to_str().unwrap(),
+            self.extension()
+        )
+    }
+
+    // Generate the default extracted filename
+    fn default_extracted_filename(&self, in_path: &Path) -> String {
+        in_path.file_stem().unwrap().to_str().unwrap().to_string()
+    }
+
     /// Getter method for the common arguments
     // TODO: There is probably a cleaner way to do this?
     fn common_args(&self) -> &CmprssCommonArgs;
@@ -30,7 +44,6 @@ pub trait Compressor {
         in_file: I,
         out_file: O,
     ) -> Result<(), io::Error> {
-        println!("compress_path_to_path");
         self.compress_file(in_file, File::create(out_file)?)
     }
 
@@ -40,7 +53,6 @@ pub trait Compressor {
         in_file: I,
         output: O,
     ) -> Result<(), io::Error> {
-        println!("compress_file");
         self.compress(File::open(in_file)?, output)
     }
 

@@ -21,6 +21,11 @@ impl Compressor for Tar {
         &self.common_args
     }
 
+    /// Tar extraction needs to specify the directory, so use the current directory
+    fn default_extracted_filename(&self, _in_path: &Path) -> String {
+        ".".to_string()
+    }
+
     /// Compress an input file or directory into a tar archive.
     fn compress_file<I: AsRef<Path>, O: Write>(
         &self,
@@ -28,7 +33,6 @@ impl Compressor for Tar {
         output: O,
     ) -> Result<(), io::Error> {
         let in_file = in_file.as_ref();
-        println!("tar: Compressing {}", in_file.display());
         let mut archive = Builder::new(output);
         if in_file.is_file() {
             archive.append_file(in_file.file_name().unwrap(), &mut File::open(in_file)?)?;
@@ -58,7 +62,6 @@ impl Compressor for Tar {
         input: I,
         out_path: O,
     ) -> Result<(), io::Error> {
-        println!("tar extracting to {}", out_path.as_ref().display());
         let mut archive = Archive::new(input);
         archive.unpack(out_path.as_ref())
     }
