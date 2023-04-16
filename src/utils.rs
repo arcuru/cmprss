@@ -64,18 +64,12 @@ pub trait Compressor {
 
     /// Compress a Read trait object to a Write object.
     fn compress<I: Read, O: Write>(&self, input: I, output: O) -> Result<(), io::Error> {
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            "compress unimplemented",
-        ))
+        cmprss_error("compress unimplemented")
     }
 
     /// Extract a Read trait object to a Write object.
     fn extract<I: Read, O: Write>(&self, input: I, output: O) -> Result<(), io::Error> {
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            "extract unimplemented",
-        ))
+        cmprss_error("extract unimplemented")
     }
 
     /// Extract a Read trait object to a path.
@@ -85,10 +79,7 @@ pub trait Compressor {
         input: I,
         out_path: O,
     ) -> Result<(), io::Error> {
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            "extract_to_path unimplemented",
-        ))
+        cmprss_error("extract_to_path unimplemented")
     }
 
     /// Extract a file to a path
@@ -101,4 +92,8 @@ pub trait Compressor {
         let out_directory = out_directory.as_ref();
         self.extract_to_path(File::open(input_file)?, out_directory)
     }
+}
+
+fn cmprss_error(message: &str) -> Result<(), io::Error> {
+    Err(io::Error::new(io::ErrorKind::Other, message))
 }
