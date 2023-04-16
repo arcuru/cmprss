@@ -3,7 +3,7 @@ mod tar;
 mod utils;
 
 use clap::{Args, Parser, Subcommand};
-use std::fs::File;
+use std::io;
 use std::path::Path;
 use utils::*;
 
@@ -105,53 +105,29 @@ fn output_filename(input: &Path, output: &Option<String>, extension: &str) -> St
     }
 }
 
-/// Execute a tar command
-fn command_tar(args: TarArgs) {
-    let args = args.common_args;
+/// Compress using the compressor
+fn compress_generic<T: Compressor>(compressor: T) -> Result<(), io::Error> {
+    // TODO: Properly handle the output file
+    //  Fail/Warn on existence
+    //  Remove if you've created a stub
+    let args = compressor.common_args();
     let input_path = Path::new(&args.input);
-    if args.compress {
-        let out = output_filename(input_path, &args.output, tar::EXT);
-        tar::compress_file(input_path, File::create(out).unwrap());
-    } else if args.extract {
-        tar::extract_file(input_path, args.output.unwrap_or(".".to_string()));
-    } else {
-        // Neither is set.
-        // Compress by default, warn if if looks like an archive.
-        if input_path.extension().unwrap() == tar::EXT {
-            println!(
-                "error: input appears to already be a tar archive, exiting. Use '--compress' if needed."
-            )
-        } else {
-            let out = output_filename(input_path, &args.output, tar::EXT);
-            tar::compress_file(input_path, File::create(out).unwrap());
-        }
-    }
-}
-
-/// Execute an extract command.
-///
-/// Attempts to extract based on the file extension.
-fn command_extract(args: ExtractArgs) {
-    let input_path = Path::new(&args.input);
-    match input_path.extension().unwrap().to_str().unwrap() {
-        tar::EXT => tar::extract_file(input_path, args.output.unwrap_or(".".to_string())),
-        _ => println!("error: unknown format "),
-    }
+    let out = output_filename(input_path, &args.output, compressor.extension());
+    compressor.compress_path_to_path(input_path, out)
 }
 
 /// Implement compression/extraction with a generic Compressor.
-fn command_generic<T: CmprssArgTrait + CmprssRead + CmprssInfo>(compressor: T) {
+fn command_generic<T: Compressor>(compressor: T) -> Result<(), io::Error> {
     let args = compressor.common_args();
     let input_path = Path::new(&args.input);
     if args.compress {
-        let out = output_filename(input_path, &args.output, compressor.extension());
-        compressor.compress(File::open(input_path).unwrap(), File::create(out).unwrap());
+        compress_generic(compressor)?;
     } else if args.extract {
-        assert!(args.output.is_some(), "error: output filename required");
-        compressor.extract(
-            File::open(input_path).unwrap(),
-            File::create(args.output.clone().unwrap()).unwrap(),
-        );
+        let output = match args.output.as_ref() {
+            Some(out) => out,
+            None => ".",
+        };
+        compressor.extract_path_to_path(input_path, output)?;
     } else {
         // Neither is set.
         // Compress by default, warn if if looks like an archive.
@@ -160,10 +136,10 @@ fn command_generic<T: CmprssArgTrait + CmprssRead + CmprssInfo>(compressor: T) {
                 "error: input appears to already be a {} archive, exiting. Use '--compress' if needed.", compressor.name()
             )
         } else {
-            let out = output_filename(input_path, &args.output, compressor.extension());
-            compressor.compress(File::open(input_path).unwrap(), File::create(out).unwrap());
+            compress_generic(compressor)?;
         }
     }
+    Ok(())
 }
 
 fn parse_gzip(args: GzipArgs) -> gzip::Gzip {
@@ -173,12 +149,18 @@ fn parse_gzip(args: GzipArgs) -> gzip::Gzip {
     }
 }
 
-fn main() {
+fn parse_tar(args: TarArgs) -> tar::Tar {
+    tar::Tar {
+        common_args: args.common_args.into_common(),
+    }
+}
+
+fn main() -> Result<(), io::Error> {
     let args = CmprssArgs::parse();
     match args.format {
-        Some(Format::Tar(a)) => command_tar(a),
-        Some(Format::Extract(a)) => command_extract(a),
+        Some(Format::Tar(a)) => command_generic(parse_tar(a)),
+        //Some(Format::Extract(a)) => command_extract(a),
         Some(Format::Gzip(a)) => command_generic(parse_gzip(a)),
-        None => println!("none"),
-    };
+        _ => Err(io::Error::new(io::ErrorKind::Other, "unknown input")),
+    }
 }

@@ -1,47 +1,65 @@
 extern crate tar;
 
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::path::Path;
 use tar::{Archive, Builder};
 
-/// The standard extension for the tar format.
-pub const EXT: &str = "tar";
+use crate::utils::*;
 
-/// Compress an input file or directory into a tar archive.
-pub fn compress_file<I: AsRef<Path>, O: Write>(in_file: I, output: O) {
-    let in_file = in_file.as_ref();
-    println!("tar: Compressing {}", in_file.display());
-    let mut archive = Builder::new(output); //File::create(out_file).unwrap());
-    if in_file.is_file() {
-        archive
-            .append_file(
-                in_file.file_name().unwrap(),
-                &mut File::open(in_file).unwrap(),
-            )
-            .unwrap();
-    } else if in_file.is_dir() {
-        archive
-            .append_dir_all(in_file.file_name().unwrap(), in_file)
-            .unwrap();
+pub struct Tar {
+    pub common_args: CmprssCommonArgs,
+}
+
+impl Compressor for Tar {
+    /// Full name for tar, also used for extension
+    fn name(&self) -> &str {
+        "tar"
     }
-    archive.finish().unwrap();
-}
 
-/// Extract the archive file into a directory
-pub fn extract_file<I: AsRef<Path>, O: AsRef<Path>>(input_file: I, out_directory: O) {
-    let input_file = input_file.as_ref();
-    let out_directory = out_directory.as_ref();
-    println!(
-        "tar: Extracting {} into {}",
-        input_file.display(),
-        out_directory.display()
-    );
-    extract(File::open(input_file).unwrap(), out_directory);
-}
+    fn common_args(&self) -> &CmprssCommonArgs {
+        &self.common_args
+    }
 
-/// Extract the archive into a directory
-pub fn extract<I: Read, O: AsRef<Path>>(input: I, out_directory: O) {
-    let mut archive = Archive::new(input);
-    archive.unpack(out_directory.as_ref()).unwrap();
+    /// Compress an input file or directory into a tar archive.
+    fn compress_file<I: AsRef<Path>, O: Write>(
+        &self,
+        in_file: I,
+        output: O,
+    ) -> Result<(), io::Error> {
+        let in_file = in_file.as_ref();
+        println!("tar: Compressing {}", in_file.display());
+        let mut archive = Builder::new(output);
+        if in_file.is_file() {
+            archive.append_file(in_file.file_name().unwrap(), &mut File::open(in_file)?)?;
+        } else if in_file.is_dir() {
+            archive.append_dir_all(in_file.file_name().unwrap(), in_file)?;
+        } else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "unknown file type",
+            ));
+        }
+        archive.finish()
+    }
+
+    /// Extract one path to another path
+    fn extract_path_to_path<I: AsRef<Path>, O: AsRef<Path>>(
+        &self,
+        in_file: I,
+        out_file: O,
+    ) -> Result<(), io::Error> {
+        self.extract_to_path(File::open(in_file)?, out_file)
+    }
+
+    /// Extract the archive into a directory
+    fn extract_to_path<I: Read, O: AsRef<Path>>(
+        &self,
+        input: I,
+        out_path: O,
+    ) -> Result<(), io::Error> {
+        println!("tar extracting to {}", out_path.as_ref().display());
+        let mut archive = Archive::new(input);
+        archive.unpack(out_path.as_ref())
+    }
 }
