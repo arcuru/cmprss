@@ -91,84 +91,54 @@ struct GzipArgs {
     compression: u32,
 }
 
-/// Generates the output filename.
-/// This either takes the given name or guesses the name based on the extension
-fn output_filename(input: &Path, output: &Option<String>, extension: &str) -> String {
-    match output.clone() {
-        Some(file) => file,
-        None => {
-            format!(
-                "{}.{}",
-                input.file_name().unwrap().to_str().unwrap(),
-                extension
-            )
-        }
-    }
-}
-
-/// Compress using the compressor
-fn compress_generic<T: Compressor>(compressor: T) -> Result<(), io::Error> {
+fn command_targets<T: Compressor>(compressor: T) -> Result<(), io::Error> {
+    let args = compressor.common_args();
+    // Input prefers stdin if that is a pipe, and falls back to reading from a file.
+    let input = match std::io::stdin().is_terminal() {
+        true => CmprssInput::Path(Path::new(&args.input)),
+        false => CmprssInput::Pipe(std::io::stdin()),
+    };
+    let default_output = match args.extract {
+        true => compressor.default_extracted_filename(Path::new(&args.input)),
+        false => compressor.default_compressed_filename(Path::new(&args.input)),
+    };
+    // Output prefers the stdout if we're piping, and falls back to piping to a file.
+    // TODO: Not sure that this output logic is the right thing to do
     // TODO: Properly handle the output file
     //  Fail/Warn on existence
     //  Remove if you've created a stub
-    let args = compressor.common_args();
-    let input_path = Path::new(&args.input);
-
-    match &args.output {
-        Some(out) => {
-            // Output file specified, use that
-            println!("Compressing {} into {}", input_path.display(), out);
-            compressor.compress_path_to_path(input_path, out)?;
-        }
-        None => {
-            // No output filename. Send to stdout if stream or guess the filename
-            if std::io::stdout().is_terminal() {
-                let out = output_filename(input_path, &args.output, compressor.extension());
-                println!("Compressing {} into {}", input_path.display(), out);
-                compressor.compress_path_to_path(input_path, out)?;
-            } else {
-                // Stdout is a pipe, attempt to compress to that
-                compressor.compress_file(input_path, std::io::stdout())?;
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Implement compression/extraction with a generic Compressor.
-fn command_generic<T: Compressor>(compressor: T) -> Result<(), io::Error> {
-    let args = compressor.common_args();
-    let input_path = Path::new(&args.input);
-    if args.compress {
-        compress_generic(compressor)?;
-    } else if args.extract {
-        match &args.output {
-            Some(out) => {
-                // Output file specified, extract there
-                compressor.extract_path_to_path(input_path, out)?;
-            }
-            None => {
-                // No output file specified
-                if std::io::stdout().is_terminal() {
-                    compressor.extract_path_to_path(
-                        input_path,
-                        compressor.default_extracted_filename(input_path),
-                    )?;
+    let output = match std::io::stdout().is_terminal() {
+        false => CmprssOutput::Pipe(std::io::stdout()),
+        true => {
+            if args.output.is_none() {
+                if !std::io::stdin().is_terminal() {
+                    // Use the 'input' file as the output
+                    // TODO: make input file optional and test existence
+                    CmprssOutput::Path(Path::new(&args.input))
                 } else {
-                    // Stdout is a pipe, extract to the pipe
-                    compressor.extract_file(input_path, std::io::stdout())?;
+                    CmprssOutput::Path(Path::new(&default_output))
                 }
+            } else {
+                CmprssOutput::Path(Path::new(args.output.as_ref().unwrap()))
             }
-        };
+        }
+    };
+    if args.compress {
+        compressor.compress(input, output)?;
+    } else if args.extract {
+        compressor.extract(input, output)?;
     } else {
-        // Neither is set.
+        // Neither compress or extract is specified.
         // Compress by default, warn if if looks like an archive.
-        if input_path.extension().unwrap() == compressor.extension() {
-            println!(
-                "error: input appears to already be a {} archive, exiting. Use '--compress' if needed.", compressor.name()
-            )
-        } else {
-            compress_generic(compressor)?;
+        match &input {
+            CmprssInput::Path(path) => {
+                if path.extension().unwrap() == compressor.extension() {
+                    return cmprss_error(
+                &format!("error: input appears to already be a {} archive, exiting. Use '--compress' if needed.", compressor.name()));
+                }
+                compressor.compress(input, output)?;
+            }
+            _ => compressor.compress(input, output)?,
         }
     }
     Ok(())
@@ -190,9 +160,9 @@ fn parse_tar(args: TarArgs) -> tar::Tar {
 fn main() -> Result<(), io::Error> {
     let args = CmprssArgs::parse();
     match args.format {
-        Some(Format::Tar(a)) => command_generic(parse_tar(a)),
+        Some(Format::Tar(a)) => command_targets(parse_tar(a)),
         //Some(Format::Extract(a)) => command_extract(a),
-        Some(Format::Gzip(a)) => command_generic(parse_gzip(a)),
+        Some(Format::Gzip(a)) => command_targets(parse_gzip(a)),
         _ => Err(io::Error::new(io::ErrorKind::Other, "unknown input")),
     }
 }

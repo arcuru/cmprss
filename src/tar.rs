@@ -26,14 +26,53 @@ impl Compressor for Tar {
         ".".to_string()
     }
 
-    /// Compress an input file or directory into a tar archive.
-    fn compress_file<I: AsRef<Path>, O: Write>(
+    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+        match output {
+            CmprssOutput::Pipe(pipe) => self.compress_internal(input, Builder::new(pipe)),
+            CmprssOutput::Path(path) => {
+                self.compress_internal(input, Builder::new(File::create(path)?))
+            }
+        }
+    }
+
+    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+        match input {
+            CmprssInput::Path(path) => {
+                self.extract_internal(Archive::new(File::open(path)?), output)
+            }
+            CmprssInput::Pipe(pipe) => self.extract_internal(Archive::new(pipe), output),
+        }
+    }
+}
+
+impl Tar {
+    /// Internal extract helper
+    fn extract_internal<R: Read>(
         &self,
-        in_file: I,
-        output: O,
+        mut archive: Archive<R>,
+        output: CmprssOutput,
     ) -> Result<(), io::Error> {
-        let in_file = in_file.as_ref();
-        let mut archive = Builder::new(output);
+        let out_path = match output {
+            CmprssOutput::Pipe(_) => {
+                return cmprss_error("error: tar does not support stdout as extract output")
+            }
+            CmprssOutput::Path(path) => path,
+        };
+        archive.unpack(out_path)
+    }
+
+    /// Internal compress helper
+    fn compress_internal<W: Write>(
+        &self,
+        input: CmprssInput,
+        mut archive: Builder<W>,
+    ) -> Result<(), io::Error> {
+        let in_file = match input {
+            CmprssInput::Path(path) => path,
+            CmprssInput::Pipe(_) => {
+                return cmprss_error("error: tar does not support stdin as input")
+            }
+        };
         if in_file.is_file() {
             archive.append_file(in_file.file_name().unwrap(), &mut File::open(in_file)?)?;
         } else if in_file.is_dir() {
@@ -45,24 +84,5 @@ impl Compressor for Tar {
             ));
         }
         archive.finish()
-    }
-
-    /// Extract one path to another path
-    fn extract_path_to_path<I: AsRef<Path>, O: AsRef<Path>>(
-        &self,
-        in_file: I,
-        out_file: O,
-    ) -> Result<(), io::Error> {
-        self.extract_to_path(File::open(in_file)?, out_file)
-    }
-
-    /// Extract the archive into a directory
-    fn extract_to_path<I: Read, O: AsRef<Path>>(
-        &self,
-        input: I,
-        out_path: O,
-    ) -> Result<(), io::Error> {
-        let mut archive = Archive::new(input);
-        archive.unpack(out_path.as_ref())
     }
 }
