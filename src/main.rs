@@ -132,9 +132,11 @@ fn command_targets<T: Compressor>(compressor: T) -> Result<(), io::Error> {
         // Compress by default, warn if if looks like an archive.
         match &input {
             CmprssInput::Path(path) => {
-                if path.extension().unwrap() == compressor.extension() {
-                    return cmprss_error(
+                if let Some(ext) = path.extension() {
+                    if ext == compressor.extension() {
+                        return cmprss_error(
                 &format!("error: input appears to already be a {} archive, exiting. Use '--compress' if needed.", compressor.name()));
+                    }
                 }
                 compressor.compress(input, output)?;
             }
