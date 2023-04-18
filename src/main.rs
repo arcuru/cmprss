@@ -91,13 +91,14 @@ struct GzipArgs {
     compression: u32,
 }
 
-fn command_targets<T: Compressor>(compressor: T) -> Result<(), io::Error> {
+fn command<T: Compressor>(compressor: T) -> Result<(), io::Error> {
     let args = compressor.common_args();
     // Input prefers stdin if that is a pipe, and falls back to reading from a file.
     let input = match std::io::stdin().is_terminal() {
         true => CmprssInput::Path(Path::new(&args.input)),
         false => CmprssInput::Pipe(std::io::stdin()),
     };
+    // Define the default output filename for use if we need it later
     let default_output = match args.extract {
         true => compressor.default_extracted_filename(Path::new(&args.input)),
         false => compressor.default_compressed_filename(Path::new(&args.input)),
@@ -128,7 +129,7 @@ fn command_targets<T: Compressor>(compressor: T) -> Result<(), io::Error> {
     } else if args.extract {
         compressor.extract(input, output)?;
     } else {
-        // Neither compress or extract is specified.
+        // Neither compress nor extract is specified.
         // Compress by default, warn if if looks like an archive.
         match &input {
             CmprssInput::Path(path) => {
@@ -162,9 +163,9 @@ fn parse_tar(args: TarArgs) -> tar::Tar {
 fn main() -> Result<(), io::Error> {
     let args = CmprssArgs::parse();
     match args.format {
-        Some(Format::Tar(a)) => command_targets(parse_tar(a)),
+        Some(Format::Tar(a)) => command(parse_tar(a)),
         //Some(Format::Extract(a)) => command_extract(a),
-        Some(Format::Gzip(a)) => command_targets(parse_gzip(a)),
+        Some(Format::Gzip(a)) => command(parse_gzip(a)),
         _ => Err(io::Error::new(io::ErrorKind::Other, "unknown input")),
     }
 }
