@@ -32,9 +32,9 @@ enum Format {
 
 #[derive(Args, Debug)]
 struct ExtractArgs {
-    /// Input file
+    /// Input/Output file/directory
     #[arg(index = 1)]
-    input: String,
+    input: Option<String>,
 
     /// Output file/directory
     #[arg(index = 2)]
@@ -49,9 +49,9 @@ struct TarArgs {
 
 #[derive(Args, Debug)]
 struct CommonArgs {
-    /// Input file
+    /// Input/Output file/directory
     #[arg(index = 1)]
-    input: String,
+    input: Option<String>,
 
     /// Output file/directory
     #[arg(index = 2)]
@@ -91,17 +91,40 @@ struct GzipArgs {
     compression: u32,
 }
 
+/// Get the input filename or return an error
+fn get_input_filename(input: &Option<String>) -> Result<&String, io::Error> {
+    match input {
+        Some(filename) => Ok(filename),
+        None => Err(io::Error::new(
+            io::ErrorKind::Other,
+            "error: no input specified",
+        )),
+    }
+}
+
+/// Get the default output filename or return error if the input isn't specified
+fn get_default_output<T: Compressor>(
+    compressor: &T,
+    input: &Option<String>,
+    extract: bool,
+) -> Result<String, io::Error> {
+    match extract {
+        true => Ok(compressor.default_extracted_filename(Path::new(get_input_filename(input)?))),
+        false => Ok(compressor.default_compressed_filename(Path::new(get_input_filename(input)?))),
+    }
+}
+
 fn command<T: Compressor>(compressor: T) -> Result<(), io::Error> {
     let args = compressor.common_args();
+    // Use to provide a longer lifetime for this value
+    let default_output;
     // Input prefers stdin if that is a pipe, and falls back to reading from a file.
     let input = match std::io::stdin().is_terminal() {
-        true => CmprssInput::Path(Path::new(&args.input)),
         false => CmprssInput::Pipe(std::io::stdin()),
-    };
-    // Define the default output filename for use if we need it later
-    let default_output = match args.extract {
-        true => compressor.default_extracted_filename(Path::new(&args.input)),
-        false => compressor.default_compressed_filename(Path::new(&args.input)),
+        true => {
+            // stdin isn't a pipe, need to read from a file
+            CmprssInput::Path(Path::new(get_input_filename(&args.input)?))
+        }
     };
     // Output prefers the stdout if we're piping, and falls back to piping to a file.
     // TODO: Not sure that this output logic is the right thing to do
@@ -113,10 +136,10 @@ fn command<T: Compressor>(compressor: T) -> Result<(), io::Error> {
         true => {
             if args.output.is_none() {
                 if !std::io::stdin().is_terminal() {
-                    // Use the 'input' file as the output
-                    // TODO: make input file optional and test existence
-                    CmprssOutput::Path(Path::new(&args.input))
+                    // Stdin is being used as the input, so use the 'input' file as the output
+                    CmprssOutput::Path(Path::new(get_input_filename(&args.input)?))
                 } else {
+                    default_output = get_default_output(&compressor, &args.input, args.extract)?;
                     CmprssOutput::Path(Path::new(&default_output))
                 }
             } else {

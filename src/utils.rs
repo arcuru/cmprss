@@ -4,7 +4,7 @@ use std::path::Path;
 pub struct CmprssCommonArgs {
     pub compress: bool,
     pub extract: bool,
-    pub input: String,
+    pub input: Option<String>,
     pub output: Option<String>,
 }
 
