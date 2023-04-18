@@ -108,9 +108,18 @@ fn get_default_output<T: Compressor>(
     input: &Option<String>,
     extract: bool,
 ) -> Result<String, io::Error> {
+    let filename = match get_input_filename(input) {
+        Ok(name) => name,
+        Err(_) => {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "error: can't infer output name while using stdin for input",
+            ))
+        }
+    };
     match extract {
-        true => Ok(compressor.default_extracted_filename(Path::new(get_input_filename(input)?))),
-        false => Ok(compressor.default_compressed_filename(Path::new(get_input_filename(input)?))),
+        true => Ok(compressor.default_extracted_filename(Path::new(filename))),
+        false => Ok(compressor.default_compressed_filename(Path::new(filename))),
     }
 }
 
@@ -135,7 +144,7 @@ fn command<T: Compressor>(compressor: T) -> Result<(), io::Error> {
         false => CmprssOutput::Pipe(std::io::stdout()),
         true => {
             if args.output.is_none() {
-                if !std::io::stdin().is_terminal() {
+                if !std::io::stdin().is_terminal() && args.input.is_some() {
                     // Stdin is being used as the input, so use the 'input' file as the output
                     CmprssOutput::Path(Path::new(get_input_filename(&args.input)?))
                 } else {
