@@ -37,8 +37,11 @@ impl Compressor for Tar {
 
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
         match input {
-            CmprssInput::Path(path) => {
-                self.extract_internal(Archive::new(File::open(path)?), output)
+            CmprssInput::Path(paths) => {
+                if paths.len() > 1 {
+                    return cmprss_error("only 1 archive can be extracted at a time");
+                }
+                self.extract_internal(Archive::new(File::open(paths[0])?), output)
             }
             CmprssInput::Pipe(pipe) => self.extract_internal(Archive::new(pipe), output),
         }
@@ -67,21 +70,23 @@ impl Tar {
         input: CmprssInput,
         mut archive: Builder<W>,
     ) -> Result<(), io::Error> {
-        let in_file = match input {
-            CmprssInput::Path(path) => path,
+        let input_files = match input {
+            CmprssInput::Path(paths) => paths,
             CmprssInput::Pipe(_) => {
                 return cmprss_error("error: tar does not support stdin as input")
             }
         };
-        if in_file.is_file() {
-            archive.append_file(in_file.file_name().unwrap(), &mut File::open(in_file)?)?;
-        } else if in_file.is_dir() {
-            archive.append_dir_all(in_file.file_name().unwrap(), in_file)?;
-        } else {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "unknown file type",
-            ));
+        for in_file in input_files {
+            if in_file.is_file() {
+                archive.append_file(in_file.file_name().unwrap(), &mut File::open(in_file)?)?;
+            } else if in_file.is_dir() {
+                archive.append_dir_all(in_file.file_name().unwrap(), in_file)?;
+            } else {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "unknown file type",
+                ));
+            }
         }
         archive.finish()
     }

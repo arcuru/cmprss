@@ -132,7 +132,7 @@ fn command<T: Compressor>(compressor: T) -> Result<(), io::Error> {
         false => CmprssInput::Pipe(std::io::stdin()),
         true => {
             // stdin isn't a pipe, need to read from a file
-            CmprssInput::Path(Path::new(get_input_filename(&args.input)?))
+            CmprssInput::Path(vec![Path::new(get_input_filename(&args.input)?)])
         }
     };
     // Output prefers the stdout if we're piping, and falls back to piping to a file.
@@ -164,11 +164,13 @@ fn command<T: Compressor>(compressor: T) -> Result<(), io::Error> {
         // Neither compress nor extract is specified.
         // Compress by default, warn if if looks like an archive.
         match &input {
-            CmprssInput::Path(path) => {
-                if let Some(ext) = path.extension() {
-                    if ext == compressor.extension() {
-                        return cmprss_error(
+            CmprssInput::Path(paths) => {
+                for x in paths {
+                    if let Some(ext) = x.extension() {
+                        if ext == compressor.extension() {
+                            return cmprss_error(
                 &format!("error: input appears to already be a {} archive, exiting. Use '--compress' if needed.", compressor.name()));
+                        }
                     }
                 }
                 compressor.compress(input, output)?;

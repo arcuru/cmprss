@@ -27,10 +27,24 @@ impl Compressor for Gzip {
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
         match (input, output) {
             (CmprssInput::Path(in_path), CmprssOutput::Path(out_path)) => {
-                self.compress_internal(File::open(in_path)?, File::create(out_path)?)
+                let mut encoder = GzEncoder::new(
+                    File::create(out_path)?,
+                    Compression::new(self.compression_level),
+                );
+                for x in in_path {
+                    std::io::copy(&mut File::open(x)?, &mut encoder)?;
+                }
+                encoder.finish()?;
+                Ok(())
             }
             (CmprssInput::Path(in_path), CmprssOutput::Pipe(out_pipe)) => {
-                self.compress_internal(File::open(in_path)?, out_pipe)
+                let mut encoder =
+                    GzEncoder::new(out_pipe, Compression::new(self.compression_level));
+                for x in in_path {
+                    std::io::copy(&mut File::open(x)?, &mut encoder)?;
+                }
+                encoder.finish()?;
+                Ok(())
             }
             (CmprssInput::Pipe(in_pipe), CmprssOutput::Path(out_path)) => {
                 self.compress_internal(in_pipe, File::create(out_path)?)
@@ -44,10 +58,16 @@ impl Compressor for Gzip {
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
         match (input, output) {
             (CmprssInput::Path(in_path), CmprssOutput::Path(out_path)) => {
-                self.extract_internal(File::open(in_path)?, File::create(out_path)?)
+                if in_path.len() > 1 {
+                    return cmprss_error("only 1 archive can be extracted at a time");
+                }
+                self.extract_internal(File::open(in_path[0])?, File::create(out_path)?)
             }
             (CmprssInput::Path(in_path), CmprssOutput::Pipe(out_pipe)) => {
-                self.extract_internal(File::open(in_path)?, out_pipe)
+                if in_path.len() > 1 {
+                    return cmprss_error("only 1 archive can be extracted at a time");
+                }
+                self.extract_internal(File::open(in_path[0])?, out_pipe)
             }
             (CmprssInput::Pipe(in_pipe), CmprssOutput::Path(out_path)) => {
                 self.extract_internal(in_pipe, File::create(out_path)?)

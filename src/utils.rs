@@ -53,7 +53,9 @@ pub fn cmprss_error(message: &str) -> Result<(), io::Error> {
 /// Defines the possible inputs of a compressor
 // TODO: Implement fmt for CmprssInput/CmprssOutput
 pub enum CmprssInput<'a> {
-    Path(&'a Path),
+    /// Path(s) to the input files.
+    Path(Vec<&'a Path>),
+    /// Input pipe
     Pipe(std::io::Stdin),
 }
 
