@@ -1,6 +1,7 @@
 use std::io;
 use std::path::Path;
 
+#[derive(Default)]
 pub struct CmprssCommonArgs {
     pub compress: bool,
     pub extract: bool,

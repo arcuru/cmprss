@@ -7,6 +7,7 @@ use tar::{Archive, Builder};
 
 use crate::utils::*;
 
+#[derive(Default)]
 pub struct Tar {
     pub common_args: CmprssCommonArgs,
 }
@@ -89,5 +90,42 @@ impl Tar {
             }
         }
         archive.finish()
+    }
+}
+
+// TODO: Tests will be largely the same for all Compressors, should be able to combine
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use assert_fs::prelude::*;
+    use predicates::prelude::*;
+
+    #[test]
+    fn roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+        let compressor = Tar::default();
+
+        let file = assert_fs::NamedTempFile::new("test.txt")?;
+        file.write_str("garbage data for testing")?;
+        let working_dir = assert_fs::TempDir::new()?;
+        let archive = working_dir.child("archive.".to_owned() + compressor.extension());
+        archive.assert(predicate::path::missing());
+
+        // Roundtrip compress/extract
+        compressor.compress(
+            CmprssInput::Path(vec![file.path()]),
+            CmprssOutput::Path(archive.path()),
+        )?;
+        archive.assert(predicate::path::is_file());
+        compressor.extract(
+            CmprssInput::Path(vec![archive.path()]),
+            CmprssOutput::Path(working_dir.path()),
+        )?;
+
+        // Assert the files are identical
+        working_dir
+            .child("test.txt")
+            .assert(predicate::path::eq_file(file.path()));
+
+        Ok(())
     }
 }

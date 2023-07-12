@@ -17,3 +17,7 @@ flate2 = "1.0"
 tar = "0.4.38"
 is-terminal = "0.4"
 
+[dev-dependencies]
+assert_cmd = "2.0.11"
+assert_fs = "1.0.12"
+predicates = "3.0.2"

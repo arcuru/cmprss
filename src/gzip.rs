@@ -9,6 +9,15 @@ pub struct Gzip {
     pub common_args: CmprssCommonArgs,
 }
 
+impl Default for Gzip {
+    fn default() -> Self {
+        Gzip {
+            compression_level: 6,
+            common_args: Default::default(),
+        }
+    }
+}
+
 impl Compressor for Gzip {
     /// The standard extension for the gzip format.
     fn extension(&self) -> &str {
@@ -101,6 +110,42 @@ impl Gzip {
     ) -> Result<(), io::Error> {
         let mut decoder = GzDecoder::new(input);
         std::io::copy(&mut decoder, &mut output)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use assert_fs::prelude::*;
+    use predicates::prelude::*;
+
+    #[test]
+    fn roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+        let compressor = Gzip::default();
+
+        let file = assert_fs::NamedTempFile::new("test.txt")?;
+        file.write_str("garbage data for testing")?;
+        let working_dir = assert_fs::TempDir::new()?;
+        let archive = working_dir.child("archive.".to_owned() + compressor.extension());
+        archive.assert(predicate::path::missing());
+
+        // Roundtrip compress/extract
+        compressor.compress(
+            CmprssInput::Path(vec![file.path()]),
+            CmprssOutput::Path(archive.path()),
+        )?;
+        archive.assert(predicate::path::is_file());
+        compressor.extract(
+            CmprssInput::Path(vec![archive.path()]),
+            CmprssOutput::Path(working_dir.child("test.txt").path()),
+        )?;
+
+        // Assert the files are identical
+        working_dir
+            .child("test.txt")
+            .assert(predicate::path::eq_file(file.path()));
+
         Ok(())
     }
 }
