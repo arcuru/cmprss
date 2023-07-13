@@ -55,7 +55,11 @@
           # `rust-src` component is required in order for this to work.
           RUST_SRC_PATH = "${devToolchain}/lib/rustlib/src/rust/library";
 
-          nativeBuildInputs = [ devToolchain ];
+          nativeBuildInputs = with pkgs; [
+            act # For running Github Actions locally
+            devToolchain
+            nodePackages.prettier
+          ];
         };
 
         checks = {
