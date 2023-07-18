@@ -6,14 +6,12 @@ use std::io::{self, Read, Write};
 
 pub struct Gzip {
     pub compression_level: u32,
-    pub common_args: CmprssCommonArgs,
 }
 
 impl Default for Gzip {
     fn default() -> Self {
         Gzip {
             compression_level: 6,
-            common_args: Default::default(),
         }
     }
 }
@@ -29,11 +27,21 @@ impl Compressor for Gzip {
         "gzip"
     }
 
-    fn common_args(&self) -> &CmprssCommonArgs {
-        &self.common_args
-    }
-
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+        if let CmprssOutput::Path(out_path) = &output {
+            if out_path.is_dir() {
+                return cmprss_error("Gzip does not support compressing to a directory. Please specify an output file.");
+            }
+        }
+        if let CmprssInput::Path(input_paths) = &input {
+            for x in input_paths {
+                if x.is_dir() {
+                    return cmprss_error(
+                        "Gzip does not support compressing a directory. Please specify only files.",
+                    );
+                }
+            }
+        }
         match (input, output) {
             (CmprssInput::Path(in_path), CmprssOutput::Path(out_path)) => {
                 let mut encoder = GzEncoder::new(
@@ -70,13 +78,13 @@ impl Compressor for Gzip {
                 if in_path.len() > 1 {
                     return cmprss_error("only 1 archive can be extracted at a time");
                 }
-                self.extract_internal(File::open(in_path[0])?, File::create(out_path)?)
+                self.extract_internal(File::open(in_path[0].as_path())?, File::create(out_path)?)
             }
             (CmprssInput::Path(in_path), CmprssOutput::Pipe(out_pipe)) => {
                 if in_path.len() > 1 {
                     return cmprss_error("only 1 archive can be extracted at a time");
                 }
-                self.extract_internal(File::open(in_path[0])?, out_pipe)
+                self.extract_internal(File::open(in_path[0].as_path())?, out_pipe)
             }
             (CmprssInput::Pipe(in_pipe), CmprssOutput::Path(out_path)) => {
                 self.extract_internal(in_pipe, File::create(out_path)?)
@@ -132,13 +140,13 @@ mod tests {
 
         // Roundtrip compress/extract
         compressor.compress(
-            CmprssInput::Path(vec![file.path()]),
-            CmprssOutput::Path(archive.path()),
+            CmprssInput::Path(vec![file.path().to_path_buf()]),
+            CmprssOutput::Path(archive.path().to_path_buf()),
         )?;
         archive.assert(predicate::path::is_file());
         compressor.extract(
-            CmprssInput::Path(vec![archive.path()]),
-            CmprssOutput::Path(working_dir.child("test.txt").path()),
+            CmprssInput::Path(vec![archive.path().to_path_buf()]),
+            CmprssOutput::Path(working_dir.child("test.txt").path().to_path_buf()),
         )?;
 
         // Assert the files are identical

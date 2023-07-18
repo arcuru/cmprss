@@ -8,18 +8,12 @@ use tar::{Archive, Builder};
 use crate::utils::*;
 
 #[derive(Default)]
-pub struct Tar {
-    pub common_args: CmprssCommonArgs,
-}
+pub struct Tar {}
 
 impl Compressor for Tar {
     /// Full name for tar, also used for extension
     fn name(&self) -> &str {
         "tar"
-    }
-
-    fn common_args(&self) -> &CmprssCommonArgs {
-        &self.common_args
     }
 
     /// Tar extraction needs to specify the directory, so use the current directory
@@ -42,7 +36,7 @@ impl Compressor for Tar {
                 if paths.len() > 1 {
                     return cmprss_error("only 1 archive can be extracted at a time");
                 }
-                self.extract_internal(Archive::new(File::open(paths[0])?), output)
+                self.extract_internal(Archive::new(File::open(paths[0].as_path())?), output)
             }
             CmprssInput::Pipe(pipe) => self.extract_internal(Archive::new(pipe), output),
         }
@@ -62,6 +56,9 @@ impl Tar {
             }
             CmprssOutput::Path(path) => path,
         };
+        if !out_path.is_dir() {
+            return cmprss_error("error: tar can only extract to a directory");
+        }
         archive.unpack(out_path)
     }
 
@@ -79,9 +76,12 @@ impl Tar {
         };
         for in_file in input_files {
             if in_file.is_file() {
-                archive.append_file(in_file.file_name().unwrap(), &mut File::open(in_file)?)?;
+                archive.append_file(
+                    in_file.file_name().unwrap(),
+                    &mut File::open(in_file.as_path())?,
+                )?;
             } else if in_file.is_dir() {
-                archive.append_dir_all(in_file.file_name().unwrap(), in_file)?;
+                archive.append_dir_all(in_file.file_name().unwrap(), in_file.as_path())?;
             } else {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -112,13 +112,13 @@ mod tests {
 
         // Roundtrip compress/extract
         compressor.compress(
-            CmprssInput::Path(vec![file.path()]),
-            CmprssOutput::Path(archive.path()),
+            CmprssInput::Path(vec![file.path().to_path_buf()]),
+            CmprssOutput::Path(archive.path().to_path_buf()),
         )?;
         archive.assert(predicate::path::is_file());
         compressor.extract(
-            CmprssInput::Path(vec![archive.path()]),
-            CmprssOutput::Path(working_dir.path()),
+            CmprssInput::Path(vec![archive.path().to_path_buf()]),
+            CmprssOutput::Path(working_dir.path().to_path_buf()),
         )?;
 
         // Assert the files are identical

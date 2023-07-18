@@ -3,9 +3,8 @@ use assert_fs::prelude::*;
 use predicates::prelude::*;
 use std::process::Command;
 
-// FIXME: Test fails because cmprss expects stdin to have data
 #[allow(dead_code)]
-//#[test]
+#[test]
 fn tar_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
     let file = assert_fs::NamedTempFile::new("test.txt")?;
     file.write_str("garbage data for testing")?;
@@ -21,7 +20,10 @@ fn tar_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
     let mut extract = Command::cargo_bin("cmprss")?;
     extract
         .arg("tar")
+        .arg("--extract")
+        .arg("--input")
         .arg(archive.path())
+        .arg("--output")
         .arg(working_dir.path());
     extract.assert().success();
 

@@ -5,7 +5,7 @@ mod utils;
 use clap::{Args, Parser, Subcommand};
 use is_terminal::IsTerminal;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use utils::*;
 
 /// A compression multi-tool
@@ -50,11 +50,11 @@ struct TarArgs {
 #[derive(Args, Debug)]
 struct CommonArgs {
     /// Input/Output file/directory
-    #[arg(index = 1)]
+    #[arg(short, long)]
     input: Option<String>,
 
     /// Output file/directory
-    #[arg(index = 2)]
+    #[arg(short, long)]
     output: Option<String>,
 
     /// Compress the input (default)
@@ -64,19 +64,11 @@ struct CommonArgs {
     /// Extract the input
     #[arg(short, long)]
     extract: bool,
-}
 
-impl CommonArgs {
-    /// Convert clap argument struct into utils::CmprssCommonArgs
-    /// This is done, perhaps unnecessarily, to keep clap out of the lib
-    fn into_common(self) -> CmprssCommonArgs {
-        CmprssCommonArgs {
-            compress: self.compress,
-            input: self.input,
-            output: self.output,
-            extract: self.extract,
-        }
-    }
+    /// List of I/O
+    /// This consists of all the inputs followed by the single output, with intelligent fallback to stdin/stdout.
+    #[arg()]
+    io_list: Vec<String>,
 }
 
 #[derive(Args, Debug)]
@@ -103,6 +95,7 @@ fn get_input_filename(input: &Option<String>) -> Result<&String, io::Error> {
 }
 
 /// Get the default output filename or return error if the input isn't specified
+#[allow(dead_code)]
 fn get_default_output<T: Compressor>(
     compressor: &T,
     input: &Option<String>,
@@ -123,83 +116,155 @@ fn get_default_output<T: Compressor>(
     }
 }
 
-fn command<T: Compressor>(compressor: T) -> Result<(), io::Error> {
-    let args = compressor.common_args();
-    // Use to provide a longer lifetime for this value
-    let default_output;
-    // Input prefers stdin if that is a pipe, and falls back to reading from a file.
-    let input = match std::io::stdin().is_terminal() {
-        false => CmprssInput::Pipe(std::io::stdin()),
-        true => {
-            // stdin isn't a pipe, need to read from a file
-            CmprssInput::Path(vec![Path::new(get_input_filename(&args.input)?)])
+#[derive(Debug)]
+enum Action {
+    Compress,
+    Extract,
+}
+
+/// Defines a single compress/extract action to take.
+#[derive(Debug)]
+struct Job {
+    input: CmprssInput,
+    output: CmprssOutput,
+    action: Action,
+}
+
+/// Parse the common args and determine the details of the job requested
+fn get_job(common_args: &CommonArgs) -> Result<Job, io::Error> {
+    let action = {
+        if common_args.compress {
+            Action::Compress
+        } else if common_args.extract {
+            Action::Extract
+        } else {
+            Action::Compress
         }
     };
-    // Output prefers the stdout if we're piping, and falls back to piping to a file.
-    // TODO: Not sure that this output logic is the right thing to do
-    // TODO: Properly handle the output file
-    //  Fail/Warn on existence
-    //  Remove if you've created a stub
-    let output = match std::io::stdout().is_terminal() {
-        false => CmprssOutput::Pipe(std::io::stdout()),
-        true => {
-            if args.output.is_none() {
-                if !std::io::stdin().is_terminal() && args.input.is_some() {
-                    // Stdin is being used as the input, so use the 'input' file as the output
-                    CmprssOutput::Path(Path::new(get_input_filename(&args.input)?))
+
+    let mut inputs = match &common_args.input {
+        Some(input) => {
+            let path = PathBuf::from(input);
+            if !path.try_exists()? {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Specified input path does not exist",
+                ));
+            }
+            vec![path]
+        }
+        None => Vec::new(),
+    };
+    let mut output = match &common_args.output {
+        Some(output) => {
+            let path = Path::new(output);
+            if path.try_exists()? && !path.is_dir() {
+                // Output path exists, bail out
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Specified output path already exists",
+                ));
+            }
+            Some(path)
+        }
+        None => None,
+    };
+
+    // Process the io_list, check if there is an output first
+    let mut io_list = common_args.io_list.clone();
+    if output.is_none() {
+        if let Some(possible_output) = common_args.io_list.last() {
+            let path = Path::new(possible_output);
+            if !path.try_exists()? {
+                // Use the given path if it doesn't exist
+                output = Some(path);
+                io_list.pop();
+            } else if path.is_dir() {
+                if std::io::stdout().is_terminal() {
+                    // stdout isn't a pipe, so use this directory as output
+                    output = Some(path);
+                    io_list.pop();
                 } else {
-                    default_output = get_default_output(&compressor, &args.input, args.extract)?;
-                    CmprssOutput::Path(Path::new(&default_output))
+                    // this is a directory and stdout is a pipe
+                    // TODO: This may need to ask the user, for now assume stdout is output
                 }
             } else {
-                CmprssOutput::Path(Path::new(args.output.as_ref().unwrap()))
+                // TODO: append checks
+            }
+        }
+    }
+    // Validate the specified inputs
+    // Everything in the io_list should be an input
+    for input in &io_list {
+        let path = PathBuf::from(input);
+        if !path.try_exists()? {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Specified input path does not exist",
+            ));
+        }
+        inputs.push(path);
+    }
+
+    // Fallback to stdin/stdout if we're missing files
+    let cmprss_input = match inputs.is_empty() {
+        true => {
+            if !std::io::stdin().is_terminal() {
+                CmprssInput::Pipe(std::io::stdin())
+            } else {
+                return Err(io::Error::new(io::ErrorKind::Other, "No specified input"));
+            }
+        }
+        false => CmprssInput::Path(inputs),
+    };
+    let cmprss_output = match output {
+        Some(path) => CmprssOutput::Path(path.to_path_buf()),
+        None => {
+            if !std::io::stdout().is_terminal() {
+                CmprssOutput::Pipe(std::io::stdout())
+            } else {
+                // TODO: add fallback checks
+                //   There are a number of combinations where we can't be sure
+                println!("error: No valid output detected. This may be because the output file already exists.");
+                return Err(io::Error::new(io::ErrorKind::Other, "No specified output"));
             }
         }
     };
-    if args.compress {
-        compressor.compress(input, output)?;
-    } else if args.extract {
-        compressor.extract(input, output)?;
-    } else {
-        // Neither compress nor extract is specified.
-        // Compress by default, warn if if looks like an archive.
-        match &input {
-            CmprssInput::Path(paths) => {
-                for x in paths {
-                    if let Some(ext) = x.extension() {
-                        if ext == compressor.extension() {
-                            return cmprss_error(
-                &format!("error: input appears to already be a {} archive, exiting. Use '--compress' if needed.", compressor.name()));
-                        }
-                    }
-                }
-                compressor.compress(input, output)?;
-            }
-            _ => compressor.compress(input, output)?,
-        }
-    }
+
+    Ok(Job {
+        input: cmprss_input,
+        output: cmprss_output,
+        action,
+    })
+}
+
+fn command<T: Compressor>(compressor: T, args: &CommonArgs) -> Result<(), io::Error> {
+    let job = get_job(args)?;
+
+    match job.action {
+        Action::Compress => compressor.compress(job.input, job.output)?,
+        Action::Extract => compressor.extract(job.input, job.output)?,
+    };
+
     Ok(())
 }
 
-fn parse_gzip(args: GzipArgs) -> gzip::Gzip {
+fn parse_gzip(args: &GzipArgs) -> gzip::Gzip {
     gzip::Gzip {
         compression_level: args.compression,
-        common_args: args.common_args.into_common(),
     }
 }
 
-fn parse_tar(args: TarArgs) -> tar::Tar {
-    tar::Tar {
-        common_args: args.common_args.into_common(),
-    }
+fn parse_tar(_args: &TarArgs) -> tar::Tar {
+    tar::Tar {}
 }
 
 fn main() -> Result<(), io::Error> {
     let args = CmprssArgs::parse();
     match args.format {
-        Some(Format::Tar(a)) => command(parse_tar(a)),
+        Some(Format::Tar(a)) => command(parse_tar(&a), &a.common_args),
         //Some(Format::Extract(a)) => command_extract(a),
-        Some(Format::Gzip(a)) => command(parse_gzip(a)),
+        Some(Format::Gzip(a)) => command(parse_gzip(&a), &a.common_args),
         _ => Err(io::Error::new(io::ErrorKind::Other, "unknown input")),
     }
 }
