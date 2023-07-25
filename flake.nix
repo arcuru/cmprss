@@ -3,93 +3,74 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    fenix = {
-      url = "github:nix-community/fenix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-    flake-utils.url = "github:numtide/flake-utils";
-    naersk = {
-      url = "github:nix-community/naersk";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
     pre-commit-hooks = {
       url = "github:cachix/pre-commit-hooks.nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.flake-utils.follows = "flake-utils";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        nixpkgs-stable.follows = "nixpkgs";
+      };
+    };
+    parts = {
+      url = "github:hercules-ci/flake-parts";
+      inputs.nixpkgs-lib.follows = "nixpkgs";
+    };
+    nci = {
+      url = "github:yusdacra/nix-cargo-integration";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        parts.follows = "parts";
+      };
     };
   };
 
-  outputs = { self, fenix, flake-utils, naersk, nixpkgs, pre-commit-hooks, }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let
-        pkgs = nixpkgs.legacyPackages.${system};
-
-        mkToolchain = fenix.packages.${system}.combine;
-
-        # Use stable rust releases by default
-        toolchain = fenix.packages.${system}.stable;
-
-        buildToolchain = mkToolchain (with toolchain; [ cargo rustc ]);
-
-        devToolchain = mkToolchain (with toolchain; [
-          cargo
-          clippy
-          rust-src
-          rustc
-          rustfmt
-          rust-analyzer
-        ]);
-      in {
-        # Use naersk to create a default package from the src files
-        packages.default = (pkgs.callPackage naersk {
-          cargo = buildToolchain;
-          rustc = buildToolchain;
-        }).buildPackage { src = ./.; };
-
-        devShells.default = pkgs.mkShell {
-          inherit (self.checks.${system}.pre-commit-check) shellHook;
-          name = "cmprss";
-
-          # Rust Analyzer needs to be able to find the path to default crate
-          # sources, and it can read this environment variable to do so. The
-          # `rust-src` component is required in order for this to work.
-          RUST_SRC_PATH = "${devToolchain}/lib/rustlib/src/rust/library";
-
-          nativeBuildInputs = with pkgs; [
-            act # For running Github Actions locally
-            devToolchain
-            nodePackages.prettier
-          ];
+  outputs = inputs:
+    inputs.parts.lib.mkFlake { inherit inputs; } {
+      imports = [ inputs.nci.flakeModule inputs.pre-commit-hooks.flakeModule ];
+      systems =
+        [ "aarch64-darwin" "aarch64-linux" "x86_64-darwin" "x86_64-linux" ];
+      perSystem = { config, pkgs, lib, ... }: {
+        nci = {
+          projects.cmprss.relPath = "";
+          crates.cmprss = { export = true; };
         };
+        packages.default = config.nci.outputs.cmprss.packages.release;
 
-        checks = {
-          packagesDefault = self.packages.${system}.default;
-          devShellsDefault = self.devShells.${system}.default;
+        pre-commit.settings = {
+          hooks = {
+            # Format rust files using rustfmt
+            rustfmt.enable = true;
 
-          pre-commit-check = pre-commit-hooks.lib.${system}.run {
-            src = ./.;
-            hooks = {
-              # Format rust files using rustfmt
-              rustfmt.enable = true;
+            # Ensure no clippy warnings exist
+            # FIXME: Re-enable. Fails due to mismatched compiler versions because of the devToolchain
+            #clippy.enable = true;
 
-              # Ensure no clippy warnings exist
-              # FIXME: Re-enable. Fails due to mismatched compiler versions because of the devToolchain
-              #clippy.enable = true;
+            # Runs `cargo check` to look for errors
+            # FIXME: Re-enable. Fails due to network errors in the sandbox.
+            #cargo-check.enable = true;
 
-              # Runs `cargo check` to look for errors
-              # FIXME: Re-enable. Fails due to network errors in the sandbox.
-              #cargo-check.enable = true;
+            # Format nix files using nixfmt
+            # This hook will format the files for you, so on a failure all
+            # that's needed to fix is to re-run the commit.
+            nixfmt.enable = true;
 
-              # Format nix files using nixfmt
-              # This hook will format the files for you, so on a failure all
-              # that's needed to fix is to re-run the commit.
-              nixfmt.enable = true;
-
-              # Format Markdown/css/etc
-              # The settings are contained in .prettierrc.yaml
-              prettier.enable = true;
-            };
+            # Format Markdown/css/etc
+            # The settings are contained in .prettierrc.yaml
+            prettier.enable = true;
           };
         };
-      });
+
+        devShells.default = config.nci.outputs.cmprss.devShell.overrideAttrs
+          (old: {
+            name = "cmprss";
+            shellHook = ''
+              ${config.pre-commit.installationScript}
+            '';
+            nativeBuildInputs = with pkgs; [
+              act # For running Github Actions locally
+              nodePackages.prettier
+              rust-analyzer
+            ];
+          });
+      };
+    };
 }
