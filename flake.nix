@@ -21,45 +21,68 @@
         parts.follows = "parts";
       };
     };
+    # Universal formatting
+    treefmt = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs:
-    inputs.parts.lib.mkFlake { inherit inputs; } {
-      imports = [ inputs.nci.flakeModule inputs.pre-commit-hooks.flakeModule ];
-      systems =
-        [ "aarch64-darwin" "aarch64-linux" "x86_64-darwin" "x86_64-linux" ];
-      perSystem = { config, pkgs, lib, ... }: {
+    inputs.parts.lib.mkFlake {inherit inputs;} {
+      imports = [
+        inputs.nci.flakeModule
+        inputs.pre-commit-hooks.flakeModule
+        inputs.treefmt.flakeModule
+      ];
+      systems = ["aarch64-darwin" "aarch64-linux" "x86_64-darwin" "x86_64-linux"];
+      perSystem = {
+        config,
+        pkgs,
+        lib,
+        ...
+      }: {
         nci = {
           projects.cmprss.relPath = "";
-          crates.cmprss = { export = true; };
+          crates.cmprss = {export = true;};
         };
         packages.default = config.nci.outputs.cmprss.packages.release;
 
-        pre-commit.settings = {
-          hooks = {
-            # Format rust files using rustfmt
-            rustfmt.enable = true;
-
-            # Ensure no clippy warnings exist
-            # FIXME: Re-enable. Fails due to mismatched compiler versions because of the devToolchain
-            #clippy.enable = true;
-
-            # Runs `cargo check` to look for errors
-            # FIXME: Re-enable. Fails due to network errors in the sandbox.
-            #cargo-check.enable = true;
-
-            # Format nix files using nixfmt
-            # This hook will format the files for you, so on a failure all
-            # that's needed to fix is to re-run the commit.
-            nixfmt.enable = true;
+        treefmt = {
+          projectRootFile = ./flake.nix;
+          programs = {
+            # Format nix files using alejandra
+            alejandra.enable = true;
 
             # Format Markdown/css/etc
             # The settings are contained in .prettierrc.yaml
             prettier.enable = true;
+
+            # Format rust files using rustfmt
+            rustfmt.enable = true;
           };
         };
 
-        devShells.default = config.nci.outputs.cmprss.devShell.overrideAttrs
+        pre-commit = {
+          # Can't run in `nix flake check` due to the sandbox
+          check.enable = false;
+          settings = {
+            settings.treefmt.package = config.treefmt.build.wrapper;
+            hooks = {
+              treefmt.enable = true;
+
+              # Ensure no clippy warnings exist
+              # FIXME: Re-enable. Fails for unknown reasons
+              #clippy.enable = true;
+
+              # Runs `cargo check` to look for errors
+              cargo-check.enable = true;
+            };
+          };
+        };
+
+        devShells.default =
+          config.nci.outputs.cmprss.devShell.overrideAttrs
           (old: {
             name = "cmprss";
             shellHook = ''
@@ -67,6 +90,7 @@
             '';
             nativeBuildInputs = with pkgs; [
               act # For running Github Actions locally
+              config.treefmt.build.wrapper # `treefmt` to format everything
               nodePackages.prettier
               rust-analyzer
             ];
