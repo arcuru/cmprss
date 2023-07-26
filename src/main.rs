@@ -131,7 +131,7 @@ struct Job {
 }
 
 /// Parse the common args and determine the details of the job requested
-fn get_job(common_args: &CommonArgs) -> Result<Job, io::Error> {
+fn get_job<T: Compressor>(compressor: &T, common_args: &CommonArgs) -> Result<Job, io::Error> {
     let action = {
         if common_args.compress {
             Action::Compress
@@ -180,14 +180,17 @@ fn get_job(common_args: &CommonArgs) -> Result<Job, io::Error> {
                 output = Some(path);
                 io_list.pop();
             } else if path.is_dir() {
-                if std::io::stdout().is_terminal() {
-                    // stdout isn't a pipe, so use this directory as output
-                    output = Some(path);
-                    io_list.pop();
-                } else {
-                    // this is a directory and stdout is a pipe
-                    // TODO: This may need to ask the user, for now assume stdout is output
-                }
+                match action {
+                    Action::Compress => {
+                        // A directory can potentially be a target output location or
+                        // an input, for now assume it is an input.
+                    }
+                    Action::Extract => {
+                        // Can extract to a directory, and it wouldn't make any sense as an input
+                        output = Some(path);
+                        io_list.pop();
+                    }
+                };
             } else {
                 // TODO: append checks
             }
@@ -223,10 +226,15 @@ fn get_job(common_args: &CommonArgs) -> Result<Job, io::Error> {
             if !std::io::stdout().is_terminal() {
                 CmprssOutput::Pipe(std::io::stdout())
             } else {
-                // TODO: add fallback checks
-                //   There are a number of combinations where we can't be sure
-                println!("error: No valid output detected. This may be because the output file already exists.");
-                return Err(io::Error::new(io::ErrorKind::Other, "No specified output"));
+                match action {
+                    Action::Compress => {
+                        // Use a default filename
+                        CmprssOutput::Path(PathBuf::from(
+                            compressor.default_compressed_filename(Path::new("archive")),
+                        ))
+                    }
+                    Action::Extract => CmprssOutput::Path(PathBuf::from(".")),
+                }
             }
         }
     };
@@ -239,8 +247,9 @@ fn get_job(common_args: &CommonArgs) -> Result<Job, io::Error> {
 }
 
 fn command<T: Compressor>(compressor: T, args: &CommonArgs) -> Result<(), io::Error> {
-    let job = get_job(args)?;
+    let job = get_job(&compressor, args)?;
 
+    // TODO: Print expected actions, and ask for confirmation if there's ambiguity
     match job.action {
         Action::Compress => compressor.compress(job.input, job.output)?,
         Action::Extract => compressor.extract(job.input, job.output)?,
