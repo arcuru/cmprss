@@ -115,10 +115,14 @@
 
       packages = {
         default = cmprss;
+        cmprss = cmprss;
       };
 
-      apps.default = inputs.flake-utils.lib.mkApp {
-        drv = cmprss;
+      apps = rec {
+        default = cmprss;
+        cmprss = inputs.flake-utils.lib.mkApp {
+          drv = self.packages.${system}.cmprss;
+        };
       };
 
       devShells.default = pkgs.mkShell {
