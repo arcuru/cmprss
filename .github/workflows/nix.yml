@@ -19,7 +19,8 @@ jobs:
         uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Check
-        run: nix flake check
+        # Run 1 at a time and print all the log files
+        run: nix flake check --max-jobs 1 -L
 
       - name: Build
         run: nix build

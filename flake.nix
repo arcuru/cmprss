@@ -10,91 +10,137 @@
         nixpkgs-stable.follows = "nixpkgs";
       };
     };
-    parts = {
-      url = "github:hercules-ci/flake-parts";
-      inputs.nixpkgs-lib.follows = "nixpkgs";
-    };
-    nci = {
-      url = "github:yusdacra/nix-cargo-integration";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        parts.follows = "parts";
-      };
-    };
-    # Universal formatting
-    treefmt = {
-      url = "github:numtide/treefmt-nix";
+
+    crane = {
+      url = "github:ipetkov/crane";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.rust-overlay.follows = ""; # Replaced with fenix
+    };
+
+    flake-utils.url = "github:numtide/flake-utils";
+
+    fenix = {
+      # Needed because rust-overlay, normally used by crane, doesn't have llvm-tools for coverage
+      url = "github:nix-community/fenix";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.rust-analyzer-src.follows = "";
+    };
+
+    advisory-db = {
+      # Rust dependency security advisories
+      url = "github:rustsec/advisory-db";
+      flake = false;
     };
   };
 
-  outputs = inputs:
-    inputs.parts.lib.mkFlake {inherit inputs;} {
-      imports = [
-        inputs.nci.flakeModule
-        inputs.pre-commit-hooks.flakeModule
-        inputs.treefmt.flakeModule
-      ];
-      systems = ["aarch64-darwin" "aarch64-linux" "x86_64-darwin" "x86_64-linux"];
-      perSystem = {
-        config,
-        pkgs,
-        lib,
-        ...
-      }: {
-        nci = {
-          projects.cmprss.relPath = "";
-          crates.cmprss = {export = true;};
-        };
-        packages.default = config.nci.outputs.cmprss.packages.release;
+  outputs = {self, ...} @ inputs:
+    inputs.flake-utils.lib.eachDefaultSystem (system: let
+      pkgs = import inputs.nixpkgs {
+        inherit system;
+      };
 
-        treefmt = {
-          projectRootFile = ./flake.nix;
-          programs = {
-            # Format nix files using alejandra
-            alejandra.enable = true;
+      inherit (pkgs) lib;
 
-            # Format Markdown/css/etc
-            # The settings are contained in .prettierrc.yaml
-            prettier.enable = true;
+      # Use the stable rust tools from fenix
+      fenixStable = inputs.fenix.packages.${system}.stable;
+      rustSrc = fenixStable.rust-src;
+      toolChain = fenixStable.completeToolchain;
 
-            # Format rust files using rustfmt
-            rustfmt.enable = true;
-          };
-        };
+      # Use the toolchain with the crane helper functions
+      craneLib = inputs.crane.lib.${system}.overrideToolchain toolChain;
 
-        pre-commit = {
-          # Can't run in `nix flake check` due to the sandbox
-          check.enable = false;
-          settings = {
-            settings.treefmt.package = config.treefmt.build.wrapper;
+      # Clean the src to only have the Rust-relevant files
+      src = craneLib.cleanCargoSource (craneLib.path ./.);
+
+      # Common arguments for mkCargoDerivation, a helper for the crane functions
+      # Arguments can be included here even if they aren't used, but we only
+      # place them here if they would otherwise show up in multiple places
+      commonArgs = {
+        inherit src cargoArtifacts;
+      };
+
+      # Build only the cargo dependencies so we can cache them all when running in CI
+      cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+
+      # Build the actual crate itself, reusing the cargoArtifacts
+      cmprss = craneLib.buildPackage commonArgs;
+    in {
+      checks =
+        {
+          # Build the crate as part of `nix flake check` for convenience
+          inherit cmprss;
+
+          # Run clippy (and deny all warnings) on the crate source
+          cmprss-clippy = craneLib.cargoClippy (commonArgs
+            // {
+              cargoClippyExtraArgs = "--all-targets -- --deny warnings";
+            });
+
+          # Check docs build successfully
+          cmprss-doc = craneLib.cargoDoc commonArgs;
+
+          # Check formatting
+          cmprss-fmt = craneLib.cargoFmt commonArgs;
+
+          # Build code coverage helper that uses llvm-cov
+          cmprss-llvm-cov = craneLib.cargoLlvmCov commonArgs;
+
+          # Run tests with cargo-nextest
+          # Note: This provides limited value, as tests are already run in the build
+          cmprss-nextest = craneLib.cargoNextest commonArgs;
+
+          # Audit dependencies
+          crate-audit = craneLib.cargoAudit (commonArgs
+            // {
+              inherit (inputs) advisory-db;
+            });
+        }
+        // lib.optionalAttrs (system == "x86_64-linux") {
+          # Check code coverage with tarpaulin runs
+          cmprss-tarpaulin = craneLib.cargoTarpaulin commonArgs;
+        }
+        // {
+          # Run formatting checks before commit
+          # Can be run manually with `pre-commit run -a`
+          pre-commit-check = inputs.pre-commit-hooks.lib.${system}.run {
+            src = ./.;
+            tools.rustfmt = toolChain;
             hooks = {
-              treefmt.enable = true;
-
-              # Ensure no clippy warnings exist
-              # FIXME: Re-enable. Fails for unknown reasons
-              #clippy.enable = true;
-
-              # Runs `cargo check` to look for errors
-              cargo-check.enable = true;
+              alejandra.enable = true; # Nix formatting
+              prettier.enable = true; # Markdown formatting
+              rustfmt.enable = true; # Rust formatting
             };
           };
         };
 
-        devShells.default =
-          config.nci.outputs.cmprss.devShell.overrideAttrs
-          (old: {
-            name = "cmprss";
-            shellHook = ''
-              ${config.pre-commit.installationScript}
-            '';
-            nativeBuildInputs = with pkgs; [
-              act # For running Github Actions locally
-              config.treefmt.build.wrapper # `treefmt` to format everything
-              nodePackages.prettier
-              rust-analyzer
-            ];
-          });
+      packages = {
+        default = cmprss;
       };
-    };
+
+      apps.default = inputs.flake-utils.lib.mkApp {
+        drv = cmprss;
+      };
+
+      devShells.default = pkgs.mkShell {
+        name = "cmprss";
+        inherit (self.checks.${system}.pre-commit-check) shellHook;
+
+        # Include the packages from the defined checks and packages
+        inputsFrom =
+          (builtins.attrValues self.checks.${system})
+          ++ (builtins.attrValues self.packages.${system});
+
+        # Extra inputs can be added here
+        nativeBuildInputs = with pkgs; [
+          act # For running Github Actions locally
+          statix
+          deadnix
+          nodePackages.prettier
+          alejandra
+        ];
+
+        # Many tools read this to find the sources for rust stdlib
+        RUST_SRC_PATH = "${rustSrc}/lib/rustlib/src/rust/library";
+      };
+    });
 }
