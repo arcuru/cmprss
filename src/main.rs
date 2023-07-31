@@ -49,7 +49,7 @@ struct TarArgs {
 
 #[derive(Args, Debug)]
 struct CommonArgs {
-    /// Input/Output file/directory
+    /// Input file/directory
     #[arg(short, long)]
     input: Option<String>,
 
@@ -69,6 +69,10 @@ struct CommonArgs {
     /// This consists of all the inputs followed by the single output, with intelligent fallback to stdin/stdout.
     #[arg()]
     io_list: Vec<String>,
+
+    /// Ignore pipes when inferring I/O
+    #[arg(long)]
+    ignore_pipes: bool,
 }
 
 #[derive(Args, Debug)]
@@ -212,7 +216,7 @@ fn get_job<T: Compressor>(compressor: &T, common_args: &CommonArgs) -> Result<Jo
     // Fallback to stdin/stdout if we're missing files
     let cmprss_input = match inputs.is_empty() {
         true => {
-            if !std::io::stdin().is_terminal() {
+            if !std::io::stdin().is_terminal() && !&common_args.ignore_pipes {
                 CmprssInput::Pipe(std::io::stdin())
             } else {
                 return Err(io::Error::new(io::ErrorKind::Other, "No specified input"));
@@ -223,7 +227,7 @@ fn get_job<T: Compressor>(compressor: &T, common_args: &CommonArgs) -> Result<Jo
     let cmprss_output = match output {
         Some(path) => CmprssOutput::Path(path.to_path_buf()),
         None => {
-            if !std::io::stdout().is_terminal() {
+            if !std::io::stdout().is_terminal() && !&common_args.ignore_pipes {
                 CmprssOutput::Pipe(std::io::stdout())
             } else {
                 match action {
