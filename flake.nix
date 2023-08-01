@@ -146,5 +146,10 @@
         # Many tools read this to find the sources for rust stdlib
         RUST_SRC_PATH = "${rustSrc}/lib/rustlib/src/rust/library";
       };
-    });
+    })
+    // {
+      overlays.default = final: prev: {
+        cmprss = self.packages.cmprss;
+      };
+    };
 }
