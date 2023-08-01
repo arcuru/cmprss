@@ -149,7 +149,7 @@
     })
     // {
       overlays.default = final: prev: {
-        cmprss = self.packages.cmprss;
+        cmprss = self.packages.${final.system}.cmprss;
       };
     };
 }
