@@ -83,7 +83,7 @@
           cmprss-fmt = craneLib.cargoFmt commonArgs;
 
           # Build code coverage helper that uses llvm-cov
-          cmprss-llvm-cov = craneLib.cargoLlvmCov commonArgs;
+          #cmprss-llvm-cov = craneLib.cargoLlvmCov commonArgs;
 
           # Run tests with cargo-nextest
           # Note: This provides limited value, as tests are already run in the build
@@ -97,7 +97,7 @@
         }
         // lib.optionalAttrs (system == "x86_64-linux") {
           # Check code coverage with tarpaulin runs
-          cmprss-tarpaulin = craneLib.cargoTarpaulin commonArgs;
+          #cmprss-tarpaulin = craneLib.cargoTarpaulin commonArgs;
         }
         // {
           # Run formatting checks before commit
@@ -141,6 +141,10 @@
           deadnix
           nodePackages.prettier
           alejandra
+
+          # Code coverage
+          cargo-tarpaulin
+          cargo-llvm-cov
         ];
 
         # Many tools read this to find the sources for rust stdlib
