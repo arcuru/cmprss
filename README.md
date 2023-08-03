@@ -75,6 +75,12 @@ If you run into any issues developing with either the Nix environment or a stabl
 
 Commits should conform to the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) standard.
 
+## Test Coverage
+
+PRs that improve the test coverage are encouraged.
+
+Test coverage can be measured using `cargo llvm-cov report` and `cargo tarpaulin`.
+
 ## @patricksjackson
 
 I am the only developer on this right now, and I usually develop by committing directly to the `main` branch.
