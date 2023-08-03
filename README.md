@@ -56,3 +56,28 @@ cmprss tar directory_1/ directory_2/ | cmprss gzip | cmprss gzip -e | cmprss tar
 
 - gzip
 - tar
+
+# Contributing
+
+## Development Environment
+
+The primary supported developer environment is defined in the `flake.nix` file.
+This is a [Nix Flake](https://nixos.wiki/wiki/Flakes) that pins versions of all packages used by `cmprss`.
+It includes a `devShell` that can be used with [direnv](https://direnv.net/) to use the tools each time you enter the directory.
+
+That being said, `cmprss` is a very standard Rust application and should work with recent Rust toolchains.
+
+The CI runs on both a stable Rust toolchain and the pinned Nix versions to verify correctness of both.
+
+If you run into any issues developing with either the Nix environment or a stable Rust environment, please open a Github issue with the details.
+
+## Conventional Commits
+
+Commits should conform to the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) standard.
+
+## @patricksjackson
+
+I am the only developer on this right now, and I usually develop by committing directly to the `main` branch.
+For larger features I _may_ go through a PR to run CI and to have some more easily discoverable documentation of a specific feature.
+
+I will stop commiting directly to `main` as soon as someone else submits a non-trivial PR and then submits a request to remove this section of the README.
