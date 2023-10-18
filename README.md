@@ -81,7 +81,7 @@ PRs that improve the test coverage are encouraged.
 
 Test coverage can be measured using `cargo llvm-cov report` and `cargo tarpaulin`.
 
-## @patricksjackson
+## @arcuru
 
 I am the only developer on this right now, and I usually develop by committing directly to the `main` branch.
 For larger features I _may_ go through a PR to run CI and to have some more easily discoverable documentation of a specific feature.
