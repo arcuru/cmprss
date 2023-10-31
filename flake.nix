@@ -14,7 +14,6 @@
     crane = {
       url = "github:ipetkov/crane";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.rust-overlay.follows = ""; # Replaced with fenix
     };
 
     flake-utils.url = "github:numtide/flake-utils";
@@ -82,9 +81,6 @@
           # Check formatting
           cmprss-fmt = craneLib.cargoFmt commonArgs;
 
-          # Build code coverage helper that uses llvm-cov
-          #cmprss-llvm-cov = craneLib.cargoLlvmCov commonArgs;
-
           # Run tests with cargo-nextest
           # Note: This provides limited value, as tests are already run in the build
           cmprss-nextest = craneLib.cargoNextest commonArgs;
@@ -144,7 +140,6 @@
 
           # Code coverage
           cargo-tarpaulin
-          cargo-llvm-cov
         ];
 
         # Many tools read this to find the sources for rust stdlib
