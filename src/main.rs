@@ -73,6 +73,14 @@ struct CommonArgs {
     /// Ignore pipes when inferring I/O
     #[arg(long)]
     ignore_pipes: bool,
+
+    /// Ignore stdin when inferring I/O
+    #[arg(long)]
+    ignore_stdin: bool,
+
+    /// Ignore stdout when inferring I/O
+    #[arg(long)]
+    ignore_stdout: bool,
 }
 
 #[derive(Args, Debug)]
@@ -200,7 +208,10 @@ fn get_job<T: Compressor>(compressor: &T, common_args: &CommonArgs) -> Result<Jo
     // Fallback to stdin/stdout if we're missing files
     let cmprss_input = match inputs.is_empty() {
         true => {
-            if !std::io::stdin().is_terminal() && !&common_args.ignore_pipes {
+            if !std::io::stdin().is_terminal()
+                && !&common_args.ignore_pipes
+                && !&common_args.ignore_stdin
+            {
                 CmprssInput::Pipe(std::io::stdin())
             } else {
                 return Err(io::Error::new(io::ErrorKind::Other, "No specified input"));
@@ -211,7 +222,10 @@ fn get_job<T: Compressor>(compressor: &T, common_args: &CommonArgs) -> Result<Jo
     let cmprss_output = match output {
         Some(path) => CmprssOutput::Path(path.to_path_buf()),
         None => {
-            if !std::io::stdout().is_terminal() && !&common_args.ignore_pipes {
+            if !std::io::stdout().is_terminal()
+                && !&common_args.ignore_pipes
+                && !&common_args.ignore_stdout
+            {
                 CmprssOutput::Pipe(std::io::stdout())
             } else {
                 match action {

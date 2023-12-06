@@ -194,7 +194,6 @@ fn gzip_roundtrip_stdin() -> Result<(), Box<dyn std::error::Error>> {
         .arg("gzip")
         .arg("--compression")
         .arg("0")
-        // TODO: add a flag to ignore just stdout so we can test each side
         .arg("test.txt.gz")
         .stdin(Stdio::from(File::open(file.path())?));
     compress.assert().success();
@@ -212,6 +211,46 @@ fn gzip_roundtrip_stdin() -> Result<(), Box<dyn std::error::Error>> {
     // Assert the files are identical
     working_dir
         .child("test.txt")
+        .assert(predicate::path::eq_file(file.path()));
+
+    Ok(())
+}
+
+/// Gzip roundtrip using filename inference
+/// Compressing: input = stdin, output = default filename (archive.gz)
+/// Extracting:  input = archive.gz, output = default filename (archive)
+#[test]
+fn gzip_roundtrip_inferred_output_filenames() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("test.txt")?;
+    file.write_str("garbage data for testing")?;
+    let working_dir = assert_fs::TempDir::new()?;
+    let archive = working_dir.child("archive.gz"); // default filename
+    archive.assert(predicate::path::missing());
+
+    // Pipe file to stdin
+    let mut compress = Command::cargo_bin("cmprss")?;
+    compress
+        .current_dir(&working_dir)
+        .arg("gzip")
+        .arg("--compression")
+        .arg("0")
+        .arg("--ignore-stdout")
+        .stdin(Stdio::from(File::open(file.path())?));
+    compress.assert().success();
+    archive.assert(predicate::path::is_file());
+
+    let mut extract = Command::cargo_bin("cmprss")?;
+    extract
+        .current_dir(&working_dir)
+        .arg("gzip")
+        .arg("--ignore-pipes")
+        .arg("--extract")
+        .arg(archive.path());
+    extract.assert().success();
+
+    // Assert the files are identical
+    working_dir
+        .child("archive")
         .assert(predicate::path::eq_file(file.path()));
 
     Ok(())
