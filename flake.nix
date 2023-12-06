@@ -123,7 +123,13 @@
 
       devShells.default = pkgs.mkShell {
         name = "cmprss";
-        inherit (self.checks.${system}.pre-commit-check) shellHook;
+        # inherit (self.checks.${system}.pre-commit-check) shellHook;
+        shellHook = ''
+          ${self.checks.${system}.pre-commit-check.shellHook}
+          echo ---------------------
+          just list
+          echo ---------------------
+        '';
 
         # Include the packages from the defined checks and packages
         inputsFrom =
@@ -133,10 +139,11 @@
         # Extra inputs can be added here
         nativeBuildInputs = with pkgs; [
           act # For running Github Actions locally
-          statix
-          deadnix
-          nodePackages.prettier
           alejandra
+          deadnix
+          just
+          nodePackages.prettier
+          statix
 
           # Code coverage
           cargo-tarpaulin
