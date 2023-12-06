@@ -1,7 +1,10 @@
 use assert_cmd::prelude::*;
 use assert_fs::prelude::*;
 use predicates::prelude::*;
-use std::process::Command;
+use std::{
+    fs::File,
+    process::{Command, Stdio},
+};
 
 /// Tar roundtrip with a single file
 ///
@@ -169,6 +172,47 @@ fn tar_roundtrip_implicit_two() -> Result<(), Box<dyn std::error::Error>> {
     working_dir
         .child("test2.txt")
         .assert(predicate::path::eq_file(file2.path()));
+
+    Ok(())
+}
+
+/// Gzip roundtrip using stdin
+/// Compressing: input = stdin, output = archive.gz
+/// Extracting:  input = archive.gz, output = stdout
+#[test]
+fn gzip_roundtrip_stdin() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("test.txt")?;
+    file.write_str("garbage data for testing")?;
+    let working_dir = assert_fs::TempDir::new()?;
+    let archive = working_dir.child("test.txt.gz");
+    archive.assert(predicate::path::missing());
+
+    // Pipe file to stdin
+    let mut compress = Command::cargo_bin("cmprss")?;
+    compress
+        .current_dir(&working_dir)
+        .arg("gzip")
+        .arg("--compression")
+        .arg("0")
+        // TODO: add a flag to ignore just stdout so we can test each side
+        .arg("test.txt.gz")
+        .stdin(Stdio::from(File::open(file.path())?));
+    compress.assert().success();
+    archive.assert(predicate::path::is_file());
+
+    let mut extract = Command::cargo_bin("cmprss")?;
+    extract
+        .current_dir(&working_dir)
+        .arg("gzip")
+        .arg("--ignore-pipes")
+        .arg("--extract")
+        .arg(archive.path());
+    extract.assert().success();
+
+    // Assert the files are identical
+    working_dir
+        .child("test.txt")
+        .assert(predicate::path::eq_file(file.path()));
 
     Ok(())
 }

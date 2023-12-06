@@ -23,6 +23,11 @@ pub trait Compressor {
 
     // Generate the default extracted filename
     fn default_extracted_filename(&self, in_path: &Path) -> String {
+        // If the file has no extension, return the current directory
+        if in_path.extension().is_none() {
+            return ".".to_string();
+        }
+        // Otherwise, return the filename without the extension
         in_path.file_stem().unwrap().to_str().unwrap().to_string()
     }
 

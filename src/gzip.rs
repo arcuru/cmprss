@@ -27,6 +27,17 @@ impl Compressor for Gzip {
         "gzip"
     }
 
+    /// Generate a default extracted filename
+    /// gzip does not support extracting to a directory, so we return a default filename
+    fn default_extracted_filename(&self, in_path: &std::path::Path) -> String {
+        // If the file has no extension, return a default filename
+        if in_path.extension().is_none() {
+            return "archive".to_string();
+        }
+        // Otherwise, return the filename without the extension
+        in_path.file_stem().unwrap().to_str().unwrap().to_string()
+    }
+
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
         if let CmprssOutput::Path(out_path) = &output {
             if out_path.is_dir() {

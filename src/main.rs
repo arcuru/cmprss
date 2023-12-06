@@ -222,7 +222,9 @@ fn get_job<T: Compressor>(compressor: &T, common_args: &CommonArgs) -> Result<Jo
                                 .default_compressed_filename(get_input_filename(&cmprss_input)?),
                         ))
                     }
-                    Action::Extract => CmprssOutput::Path(PathBuf::from(".")),
+                    Action::Extract => CmprssOutput::Path(PathBuf::from(
+                        compressor.default_extracted_filename(get_input_filename(&cmprss_input)?),
+                    )),
                 }
             }
         }
