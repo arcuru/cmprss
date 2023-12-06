@@ -87,36 +87,20 @@ struct GzipArgs {
     compression: u32,
 }
 
-/// Get the input filename or return an error
-fn get_input_filename(input: &Option<String>) -> Result<&String, io::Error> {
+/// Get the input filename or return a default file
+/// This file will be used to generate the output filename
+fn get_input_filename(input: &CmprssInput) -> Result<&Path, io::Error> {
     match input {
-        Some(filename) => Ok(filename),
-        None => Err(io::Error::new(
-            io::ErrorKind::Other,
-            "error: no input specified",
-        )),
-    }
-}
-
-/// Get the default output filename or return error if the input isn't specified
-#[allow(dead_code)]
-fn get_default_output<T: Compressor>(
-    compressor: &T,
-    input: &Option<String>,
-    extract: bool,
-) -> Result<String, io::Error> {
-    let filename = match get_input_filename(input) {
-        Ok(name) => name,
-        Err(_) => {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "error: can't infer output name while using stdin for input",
-            ))
+        CmprssInput::Path(paths) => {
+            if paths.is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "error: no input specified",
+                ));
+            }
+            Ok(paths.first().unwrap())
         }
-    };
-    match extract {
-        true => Ok(compressor.default_extracted_filename(Path::new(filename))),
-        false => Ok(compressor.default_compressed_filename(Path::new(filename))),
+        CmprssInput::Pipe(_) => Ok(Path::new("archive")),
     }
 }
 
@@ -234,7 +218,8 @@ fn get_job<T: Compressor>(compressor: &T, common_args: &CommonArgs) -> Result<Jo
                     Action::Compress => {
                         // Use a default filename
                         CmprssOutput::Path(PathBuf::from(
-                            compressor.default_compressed_filename(Path::new("archive")),
+                            compressor
+                                .default_compressed_filename(get_input_filename(&cmprss_input)?),
                         ))
                     }
                     Action::Extract => CmprssOutput::Path(PathBuf::from(".")),

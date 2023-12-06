@@ -82,20 +82,20 @@ fn tar_roundtrip_explicit_two() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Tar roundtrip with a single file inferring output
-/// Compressing: output = './archive.tar'
+/// Tar roundtrip with a single file inferring output filename
+/// Compressing: output = './test.txt.tar'
 /// Extracting:  output = '.'
 ///
 /// ``` bash
 /// cmprss tar test.txt
-/// cmprss tar --extract archive.tar
+/// cmprss tar --extract test.txt.tar
 /// ```
 #[test]
 fn tar_roundtrip_implicit() -> Result<(), Box<dyn std::error::Error>> {
     let file = assert_fs::NamedTempFile::new("test.txt")?;
     file.write_str("garbage data for testing")?;
     let working_dir = assert_fs::TempDir::new()?.into_persistent();
-    let archive = working_dir.child("archive.tar");
+    let archive = working_dir.child("test.txt.tar");
     archive.assert(predicate::path::missing());
 
     let mut compress = Command::cargo_bin("cmprss")?;
@@ -125,12 +125,13 @@ fn tar_roundtrip_implicit() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Tar roundtrip with multiple files inferring output
-/// Compressing: output = './archive.tar'
+/// Uses the first file's name to generate the output filename
+/// Compressing: output = './test.txt.tar'
 /// Extracting:  output = '.'
 ///
 /// ``` bash
 /// cmprss tar test.txt test2.txt
-/// cmprss tar --extract archive.tar
+/// cmprss tar --extract test.txt.tar
 /// ```
 #[test]
 fn tar_roundtrip_implicit_two() -> Result<(), Box<dyn std::error::Error>> {
@@ -139,7 +140,7 @@ fn tar_roundtrip_implicit_two() -> Result<(), Box<dyn std::error::Error>> {
     let file2 = assert_fs::NamedTempFile::new("test2.txt")?;
     file2.write_str("more garbage data for testing")?;
     let working_dir = assert_fs::TempDir::new()?.into_persistent();
-    let archive = working_dir.child("archive.tar");
+    let archive = working_dir.child("test.txt.tar");
     archive.assert(predicate::path::missing());
 
     let mut compress = Command::cargo_bin("cmprss")?;
