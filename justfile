@@ -16,3 +16,7 @@ check:
 @fmt:
     just --fmt --unstable
     cargo fmt --all
+
+# run tests
+test:
+    cargo test --all
