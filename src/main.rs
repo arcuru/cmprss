@@ -1,6 +1,7 @@
 mod gzip;
 mod tar;
 mod utils;
+mod xz;
 
 use clap::{Args, Parser, Subcommand};
 use is_terminal::IsTerminal;
@@ -28,6 +29,9 @@ enum Format {
     /// gzip compression
     #[clap(visible_alias = "gz")]
     Gzip(GzipArgs),
+
+    /// xz compression
+    Xz(XzArgs),
 }
 
 #[derive(Args, Debug)]
@@ -93,6 +97,18 @@ struct GzipArgs {
     /// This is an int 0-9, with 0 being no compression and 9 being highest compression.
     #[arg(long, default_value_t = 6)]
     compression: u32,
+}
+
+#[derive(Args, Debug)]
+struct XzArgs {
+    #[clap(flatten)]
+    common_args: CommonArgs,
+
+    /// Level of compression
+    ///
+    /// This is an int 0-9, with 0 being no compression and 9 being highest compression.
+    #[arg(long, default_value_t = 6)]
+    level: u32,
 }
 
 /// Get the input filename or return a default file
@@ -269,6 +285,10 @@ fn parse_gzip(args: &GzipArgs) -> gzip::Gzip {
     }
 }
 
+fn parse_xz(args: &XzArgs) -> xz::Xz {
+    xz::Xz { level: args.level }
+}
+
 fn parse_tar(_args: &TarArgs) -> tar::Tar {
     tar::Tar {}
 }
@@ -279,6 +299,7 @@ fn main() -> Result<(), io::Error> {
         Some(Format::Tar(a)) => command(parse_tar(&a), &a.common_args),
         //Some(Format::Extract(a)) => command_extract(a),
         Some(Format::Gzip(a)) => command(parse_gzip(&a), &a.common_args),
+        Some(Format::Xz(a)) => command(parse_xz(&a), &a.common_args),
         _ => Err(io::Error::new(io::ErrorKind::Other, "unknown input")),
     }
 }

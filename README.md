@@ -56,6 +56,7 @@ cmprss tar directory_1/ directory_2/ | cmprss gzip | cmprss gzip -e | cmprss tar
 
 - gzip
 - tar
+- xz
 
 # Contributing
 
