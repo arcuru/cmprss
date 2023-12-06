@@ -177,8 +177,13 @@ fn tar_roundtrip_implicit_two() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Gzip roundtrip using stdin
-/// Compressing: input = stdin, output = archive.gz
-/// Extracting:  input = archive.gz, output = stdout
+/// Compressing: input = stdin, output = test.txt.gz
+/// Extracting:  input = test.txt.gz, output = test.txt
+///
+/// ``` bash
+/// cat test.txt | cmprss gzip test.txt.gz
+/// cmprss gzip --ignore-pipes --extract test.txt.gz
+/// ```
 #[test]
 fn gzip_roundtrip_stdin() -> Result<(), Box<dyn std::error::Error>> {
     let file = assert_fs::NamedTempFile::new("test.txt")?;
@@ -192,8 +197,6 @@ fn gzip_roundtrip_stdin() -> Result<(), Box<dyn std::error::Error>> {
     compress
         .current_dir(&working_dir)
         .arg("gzip")
-        .arg("--compression")
-        .arg("0")
         .arg("test.txt.gz")
         .stdin(Stdio::from(File::open(file.path())?));
     compress.assert().success();
@@ -219,6 +222,11 @@ fn gzip_roundtrip_stdin() -> Result<(), Box<dyn std::error::Error>> {
 /// Gzip roundtrip using filename inference
 /// Compressing: input = stdin, output = default filename (archive.gz)
 /// Extracting:  input = archive.gz, output = default filename (archive)
+///
+/// ``` bash
+/// cat test.txt | cmprss gzip
+/// cmprss gzip --ignore-pipes --extract archive.gz
+/// ```
 #[test]
 fn gzip_roundtrip_inferred_output_filenames() -> Result<(), Box<dyn std::error::Error>> {
     let file = assert_fs::NamedTempFile::new("test.txt")?;
@@ -232,8 +240,6 @@ fn gzip_roundtrip_inferred_output_filenames() -> Result<(), Box<dyn std::error::
     compress
         .current_dir(&working_dir)
         .arg("gzip")
-        .arg("--compression")
-        .arg("0")
         .arg("--ignore-stdout")
         .stdin(Stdio::from(File::open(file.path())?));
     compress.assert().success();
