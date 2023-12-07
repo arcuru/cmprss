@@ -7,8 +7,8 @@
     act
 
 # run all checks
-check:
-    just fmt
+check: fmt test
+    cargo clippy
     pre-commit run --all-files --show-diff-on-failure
     nix flake check
 
