@@ -38,6 +38,7 @@ impl Compressor for Gzip {
         in_path.file_stem().unwrap().to_str().unwrap().to_string()
     }
 
+    /// Compress an input file or pipe to a gzip archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
         if let CmprssOutput::Path(out_path) = &output {
             if out_path.is_dir() {
@@ -53,82 +54,44 @@ impl Compressor for Gzip {
                 }
             }
         }
-        match (input, output) {
-            (CmprssInput::Path(in_path), CmprssOutput::Path(out_path)) => {
-                let mut encoder = GzEncoder::new(
-                    File::create(out_path)?,
-                    Compression::new(self.compression_level),
-                );
-                for x in in_path {
-                    std::io::copy(&mut File::open(x)?, &mut encoder)?;
+        let mut input_stream = match input {
+            CmprssInput::Path(paths) => {
+                if paths.len() > 1 {
+                    return cmprss_error("only 1 file can be compressed at a time");
                 }
-                encoder.finish()?;
-                Ok(())
+                Box::new(File::open(paths[0].as_path())?)
             }
-            (CmprssInput::Path(in_path), CmprssOutput::Pipe(out_pipe)) => {
-                let mut encoder =
-                    GzEncoder::new(out_pipe, Compression::new(self.compression_level));
-                for x in in_path {
-                    std::io::copy(&mut File::open(x)?, &mut encoder)?;
-                }
-                encoder.finish()?;
-                Ok(())
-            }
-            (CmprssInput::Pipe(in_pipe), CmprssOutput::Path(out_path)) => {
-                self.compress_internal(in_pipe, File::create(out_path)?)
-            }
-            (CmprssInput::Pipe(in_pipe), CmprssOutput::Pipe(out_pipe)) => {
-                self.compress_internal(in_pipe, out_pipe)
-            }
-        }
-    }
+            CmprssInput::Pipe(pipe) => Box::new(pipe) as Box<dyn Read + Send>,
+        };
+        let output_stream = match output {
+            CmprssOutput::Path(path) => Box::new(File::create(path)?),
+            CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
+        };
 
-    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
-        match (input, output) {
-            (CmprssInput::Path(in_path), CmprssOutput::Path(out_path)) => {
-                if in_path.len() > 1 {
-                    return cmprss_error("only 1 archive can be extracted at a time");
-                }
-                self.extract_internal(File::open(in_path[0].as_path())?, File::create(out_path)?)
-            }
-            (CmprssInput::Path(in_path), CmprssOutput::Pipe(out_pipe)) => {
-                if in_path.len() > 1 {
-                    return cmprss_error("only 1 archive can be extracted at a time");
-                }
-                self.extract_internal(File::open(in_path[0].as_path())?, out_pipe)
-            }
-            (CmprssInput::Pipe(in_pipe), CmprssOutput::Path(out_path)) => {
-                self.extract_internal(in_pipe, File::create(out_path)?)
-            }
-            (CmprssInput::Pipe(in_pipe), CmprssOutput::Pipe(out_pipe)) => {
-                self.extract_internal(in_pipe, out_pipe)
-            }
-        }
-    }
-}
-
-impl Gzip {
-    /// Compress an input stream into a gzip archive.
-    fn compress_internal<I: Read, O: Write>(
-        &self,
-        mut input: I,
-        output: O,
-    ) -> Result<(), io::Error> {
-        let mut encoder = GzEncoder::new(output, Compression::new(self.compression_level));
-
-        std::io::copy(&mut input, &mut encoder)?;
+        let mut encoder = GzEncoder::new(output_stream, Compression::new(self.compression_level));
+        std::io::copy(&mut input_stream, &mut encoder)?;
         encoder.finish()?;
         Ok(())
     }
 
-    /// Extract the gzip compressed data
-    fn extract_internal<I: Read, O: Write>(
-        &self,
-        input: I,
-        mut output: O,
-    ) -> Result<(), io::Error> {
-        let mut decoder = GzDecoder::new(input);
-        std::io::copy(&mut decoder, &mut output)?;
+    /// Extract a gzip archive
+    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+        let input_stream = match input {
+            CmprssInput::Path(paths) => {
+                if paths.len() > 1 {
+                    return cmprss_error("only 1 file can be extracted at a time");
+                }
+                Box::new(File::open(paths[0].as_path())?)
+            }
+            CmprssInput::Pipe(pipe) => Box::new(pipe) as Box<dyn Read + Send>,
+        };
+        let mut output_stream = match output {
+            CmprssOutput::Path(path) => Box::new(File::create(path)?),
+            CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
+        };
+
+        let mut decoder = GzDecoder::new(input_stream);
+        std::io::copy(&mut decoder, &mut output_stream)?;
         Ok(())
     }
 }
