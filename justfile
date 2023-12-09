@@ -7,7 +7,7 @@
     act
 
 # run all checks
-check: fmt test
+check: fmt test audit
     cargo clippy
     pre-commit run --all-files --show-diff-on-failure
     nix flake check
@@ -20,3 +20,7 @@ check: fmt test
 # run tests
 test:
     cargo nextest run
+
+# run security audit on dependencies
+audit:
+    cargo audit
