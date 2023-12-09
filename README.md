@@ -9,6 +9,7 @@ Replace `tar` with something you can remember.
 
 Currently supports:
 
+- bzip2
 - gzip
 - tar
 - xz

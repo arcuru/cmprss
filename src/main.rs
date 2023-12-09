@@ -1,3 +1,4 @@
+mod bzip2;
 mod gzip;
 mod tar;
 mod utils;
@@ -29,6 +30,10 @@ enum Format {
 
     /// xz compression
     Xz(XzArgs),
+
+    /// bzip2 compression
+    #[clap(visible_alias = "bz2")]
+    Bzip2(Bzip2Args),
 }
 
 #[derive(Args, Debug)]
@@ -93,6 +98,20 @@ struct XzArgs {
     /// Level of compression
     ///
     /// This is an int 0-9, with 0 being no compression and 9 being highest compression.
+    #[arg(long, default_value_t = 6)]
+    level: u32,
+}
+
+#[derive(Args, Debug)]
+struct Bzip2Args {
+    #[clap(flatten)]
+    common_args: CommonArgs,
+
+    /// Level of compression
+    ///
+    /// This is an int 0-9, with 0 being no compression and 9 being highest compression.
+    /// TODO: Support keywords none, fast, best
+    /// Correspond to 0, 1, 9
     #[arg(long, default_value_t = 6)]
     level: u32,
 }
@@ -275,6 +294,10 @@ fn parse_xz(args: &XzArgs) -> xz::Xz {
     xz::Xz { level: args.level }
 }
 
+fn parse_bzip2(args: &Bzip2Args) -> bzip2::Bzip2 {
+    bzip2::Bzip2 { level: args.level }
+}
+
 fn parse_tar(_args: &TarArgs) -> tar::Tar {
     tar::Tar {}
 }
@@ -285,6 +308,7 @@ fn main() -> Result<(), io::Error> {
         Some(Format::Tar(a)) => command(parse_tar(&a), &a.common_args),
         Some(Format::Gzip(a)) => command(parse_gzip(&a), &a.common_args),
         Some(Format::Xz(a)) => command(parse_xz(&a), &a.common_args),
+        Some(Format::Bzip2(a)) => command(parse_bzip2(&a), &a.common_args),
         _ => Err(io::Error::new(io::ErrorKind::Other, "unknown input")),
     }
 }
