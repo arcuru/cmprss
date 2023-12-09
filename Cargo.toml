@@ -8,8 +8,7 @@ license = "MIT"
 description = "cmprss - a compression multi-tool for the CLI"
 repository = "https://github.com/arcuru/cmprss"
 homepage = "https://github.com/arcuru/cmprss"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+categories = ["command-line-utilities", "compression"]
 
 [dependencies]
 clap = { version = "4.2.1", features = ["derive"] }
