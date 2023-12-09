@@ -19,4 +19,4 @@ check: fmt test
 
 # run tests
 test:
-    cargo test --all
+    cargo nextest run
