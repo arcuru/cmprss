@@ -23,26 +23,12 @@ enum Format {
     /// tar archive format
     Tar(TarArgs),
 
-    /// extract by guessing the format
-    Extract(ExtractArgs),
-
     /// gzip compression
     #[clap(visible_alias = "gz")]
     Gzip(GzipArgs),
 
     /// xz compression
     Xz(XzArgs),
-}
-
-#[derive(Args, Debug)]
-struct ExtractArgs {
-    /// Input/Output file/directory
-    #[arg(index = 1)]
-    input: Option<String>,
-
-    /// Output file/directory
-    #[arg(index = 2)]
-    output: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -297,7 +283,6 @@ fn main() -> Result<(), io::Error> {
     let args = CmprssArgs::parse();
     match args.format {
         Some(Format::Tar(a)) => command(parse_tar(&a), &a.common_args),
-        //Some(Format::Extract(a)) => command_extract(a),
         Some(Format::Gzip(a)) => command(parse_gzip(&a), &a.common_args),
         Some(Format::Xz(a)) => command(parse_xz(&a), &a.common_args),
         _ => Err(io::Error::new(io::ErrorKind::Other, "unknown input")),
