@@ -93,7 +93,7 @@
         }
         // lib.optionalAttrs (system == "x86_64-linux") {
           # Check code coverage with tarpaulin runs
-          #cmprss-tarpaulin = craneLib.cargoTarpaulin commonArgs;
+          cmprss-tarpaulin = craneLib.cargoTarpaulin commonArgs;
         }
         // {
           # Run formatting checks before commit
@@ -127,7 +127,7 @@
         shellHook = ''
           ${self.checks.${system}.pre-commit-check.shellHook}
           echo ---------------------
-          just list
+          task --list
           echo ---------------------
         '';
 
@@ -141,7 +141,7 @@
           act # For running Github Actions locally
           alejandra
           deadnix
-          just
+          go-task
           nodePackages.prettier
           statix
 

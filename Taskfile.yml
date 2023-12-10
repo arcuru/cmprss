@@ -1,0 +1,27 @@
+# https://taskfile.dev
+
+version: "3"
+
+tasks:
+  default:
+    cmd: task --list
+    silent: true
+  ci:
+    desc: Run CI locally in containers
+    cmd: act
+  check:
+    desc: Run all checks
+    deps: [audit, fmt, test]
+    cmds:
+      - cargo clippy
+      - pre-commit run --all-files --show-diff-on-failure
+      - nix flake check
+  fmt:
+    desc: Run all formatters
+    cmd: cargo fmt --all
+  test:
+    desc: Run all tests
+    cmd: cargo nextest run
+  audit:
+    desc: Run cargo security audit
+    cmd: cargo audit
