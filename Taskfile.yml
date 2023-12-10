@@ -2,26 +2,50 @@
 
 version: "3"
 
+method: timestamp
+
 tasks:
   default:
     cmd: task --list
     silent: true
-  ci:
+  ci:full:
     desc: Run CI locally in containers
     cmd: act
-  check:
-    desc: Run all checks
-    deps: [audit, fmt, test]
+  ci:local:
+    desc: Run CI locally
+    deps: [audit, fmt, test, nix:check, nix:build, clippy, pre-commit]
+  nix:check:
+    desc: Run Nix CI checks
+    sources:
+      - "./**/*"
     cmds:
-      - cargo clippy
-      - pre-commit run --all-files --show-diff-on-failure
       - nix flake check
+  nix:build:
+    desc: Run Nix Build
+    cmds:
+      - nix build
+  clippy:
+    desc: Run clippy
+    sources:
+      - "./**/*.rs"
+    cmd: cargo clippy
+  pre-commit:
+    desc: Run pre-commit
+    cmd: pre-commit run --all-files --show-diff-on-failure
   fmt:
     desc: Run all formatters
+    sources:
+      - "./**/*.rs"
     cmd: cargo fmt --all
   test:
     desc: Run all tests
+    aliases: [t]
+    sources:
+      - "./**/*.rs"
     cmd: cargo nextest run
   audit:
     desc: Run cargo security audit
+    sources:
+      - Cargo.lock
+      - flake.lock
     cmd: cargo audit

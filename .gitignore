@@ -8,4 +8,8 @@
 # Nix build files
 /result
 
+# direnv files
 /.direnv
+
+# task files for tracking already run commands
+/.task
