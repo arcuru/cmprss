@@ -1,5 +1,5 @@
 {
-  description = "cmprss: a compression client for the CLI";
+  description = "A compression multi-tool for the command line.";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";

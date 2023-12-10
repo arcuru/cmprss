@@ -3,7 +3,7 @@
 **Status: Alpha.**
 CLI is relatively stable but likely contains bugs, and there may be future breaking changes.
 
-A compression multi-tool for the CLI.
+A compression multi-tool for the command line.
 Replace `tar` with something you can remember.
 [Relevant XKCD](https://xkcd.com/1168/).
 
