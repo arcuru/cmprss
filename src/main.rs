@@ -1,5 +1,6 @@
 mod bzip2;
 mod gzip;
+mod progress;
 mod tar;
 mod utils;
 mod xz;
