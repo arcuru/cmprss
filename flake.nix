@@ -140,6 +140,7 @@
           act # For running Github Actions locally
           alejandra
           deadnix
+          git-cliff
           go-task
           nodePackages.prettier
           statix
