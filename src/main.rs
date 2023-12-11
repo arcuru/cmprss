@@ -302,7 +302,7 @@ fn parse_tar(_args: &TarArgs) -> tar::Tar {
     tar::Tar {}
 }
 
-fn main() -> Result<(), io::Error> {
+fn main() {
     let args = CmprssArgs::parse();
     match args.format {
         Some(Format::Tar(a)) => command(parse_tar(&a), &a.common_args),
@@ -311,4 +311,8 @@ fn main() -> Result<(), io::Error> {
         Some(Format::Bzip2(a)) => command(parse_bzip2(&a), &a.common_args),
         _ => Err(io::Error::new(io::ErrorKind::Other, "unknown input")),
     }
+    .unwrap_or_else(|e| {
+        eprintln!("ERROR(cmprss): {}", e);
+        std::process::exit(1);
+    });
 }
