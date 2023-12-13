@@ -7,6 +7,7 @@ mod xz;
 
 use clap::{Args, Parser, Subcommand};
 use is_terminal::IsTerminal;
+use progress::ProgressDisplay;
 use std::io;
 use std::path::{Path, PathBuf};
 use utils::*;
@@ -41,6 +42,13 @@ enum Format {
 struct TarArgs {
     #[clap(flatten)]
     common_args: CommonArgs,
+}
+
+#[derive(Args, Debug)]
+struct ProgressArgs {
+    /// Show progress.
+    #[arg(long, value_enum, default_value = "auto")]
+    progress: ProgressDisplay,
 }
 
 #[derive(Args, Debug)]
@@ -95,6 +103,9 @@ struct GzipArgs {
 struct XzArgs {
     #[clap(flatten)]
     common_args: CommonArgs,
+
+    #[clap(flatten)]
+    progress_args: ProgressArgs,
 
     /// Level of compression
     ///
@@ -292,7 +303,10 @@ fn parse_gzip(args: &GzipArgs) -> gzip::Gzip {
 }
 
 fn parse_xz(args: &XzArgs) -> xz::Xz {
-    xz::Xz { level: args.level }
+    xz::Xz {
+        level: args.level,
+        progress: args.progress_args.progress,
+    }
 }
 
 fn parse_bzip2(args: &Bzip2Args) -> bzip2::Bzip2 {

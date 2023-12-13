@@ -1,4 +1,12 @@
+use crate::utils::CmprssOutput;
 use indicatif::{HumanBytes, ProgressBar};
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+pub enum ProgressDisplay {
+    Auto,
+    On,
+    Off,
+}
 
 /// Progress bar for the compress process
 pub struct Progress {
@@ -10,8 +18,22 @@ pub struct Progress {
     output_written: u64,
 }
 
+/// Create a progress bar if necessary
+pub fn progress_bar(
+    input_size: Option<u64>,
+    progress: ProgressDisplay,
+    output: &CmprssOutput,
+) -> Option<Progress> {
+    match (progress, output) {
+        (ProgressDisplay::Auto, CmprssOutput::Pipe(_)) => None,
+        (ProgressDisplay::Off, _) => None,
+        (_, _) => Some(Progress::new(input_size)),
+    }
+}
+
 impl Progress {
     /// Create a new progress bar
+    /// Draws to stderr by default
     pub fn new(input_size: Option<u64>) -> Self {
         let bar = match input_size {
             Some(size) => ProgressBar::new(size),

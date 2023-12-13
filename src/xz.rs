@@ -1,4 +1,7 @@
-use crate::{progress::Progress, utils::*};
+use crate::{
+    progress::{progress_bar, ProgressDisplay},
+    utils::*,
+};
 use std::{
     fs::File,
     io::{self, Read, Write},
@@ -7,11 +10,15 @@ use xz2::write::{XzDecoder, XzEncoder};
 
 pub struct Xz {
     pub level: u32,
+    pub progress: ProgressDisplay,
 }
 
 impl Default for Xz {
     fn default() -> Self {
-        Xz { level: 6 }
+        Xz {
+            level: 6,
+            progress: ProgressDisplay::Auto,
+        }
     }
 }
 
@@ -42,18 +49,13 @@ impl Compressor for Xz {
             }
             CmprssInput::Pipe(pipe) => Box::new(pipe) as Box<dyn Read + Send>,
         };
-        // We want to use the progress bar unless this is in the middle of a pipe
-        let mut progress_bar = false;
-        let output_stream: Box<dyn Write + Send> = match output {
-            CmprssOutput::Path(path) => {
-                progress_bar = true;
-                Box::new(File::create(path)?)
-            }
+        let output_stream: Box<dyn Write + Send> = match &output {
+            CmprssOutput::Path(path) => Box::new(File::create(path)?),
             CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
         };
         let mut encoder = XzEncoder::new(output_stream, self.level);
-        if progress_bar {
-            let mut progress = Progress::new(file_size);
+        let mut bar = progress_bar(file_size, self.progress, &output);
+        if let Some(progress) = &mut bar {
             // Copy the input to the output in 8k chunks
             let mut buffer = [0; 8192];
             loop {
@@ -88,18 +90,13 @@ impl Compressor for Xz {
             }
             CmprssInput::Pipe(pipe) => Box::new(pipe) as Box<dyn Read + Send>,
         };
-        // We want to use the progress bar unless this is in the middle of a pipe
-        let mut progress_bar = false;
-        let output_stream: Box<dyn Write + Send> = match output {
-            CmprssOutput::Path(path) => {
-                progress_bar = true;
-                Box::new(File::create(path)?)
-            }
+        let output_stream: Box<dyn Write + Send> = match &output {
+            CmprssOutput::Path(path) => Box::new(File::create(path)?),
             CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
         };
         let mut decoder = XzDecoder::new(output_stream);
-        if progress_bar {
-            let mut progress = Progress::new(file_size);
+        let mut bar = progress_bar(file_size, self.progress, &output);
+        if let Some(progress) = &mut bar {
             // Copy the input to the output in 8k chunks
             let mut buffer = [0; 8192];
             loop {
