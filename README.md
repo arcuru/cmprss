@@ -78,6 +78,8 @@ If you run into any issues developing with either the Nix environment or a stabl
 
 Commits should conform to the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) standard.
 
+A script to help create conforming commits is provided in `bin/commit.sh`, or via `task commit`.
+
 ### Test Coverage
 
 PRs that improve the test coverage are encouraged.

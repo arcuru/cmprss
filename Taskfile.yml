@@ -2,7 +2,8 @@
 
 version: "3"
 
-method: timestamp
+vars:
+  BIN: "{{.ROOT_DIR}}/bin"
 
 tasks:
   default:
@@ -13,11 +14,11 @@ tasks:
     cmd: act
   ci:local:
     desc: Run CI locally
-    deps: [audit, fmt, test, nix:check, nix:build, clippy, pre-commit]
+    deps: [audit, fmt, test, nix:check, nix:build, clippy, pre-commit, build]
   nix:check:
     desc: Run Nix CI checks
     sources:
-      - "./**/*"
+      - ./**/*
     cmds:
       - nix flake check
   nix:build:
@@ -27,7 +28,7 @@ tasks:
   clippy:
     desc: Run clippy
     sources:
-      - "./**/*.rs"
+      - ./**/*.rs
     cmd: cargo clippy
   pre-commit:
     desc: Run pre-commit
@@ -35,13 +36,13 @@ tasks:
   fmt:
     desc: Run all formatters
     sources:
-      - "./**/*.rs"
+      - ./**/*.rs
     cmd: cargo fmt --all
   test:
     desc: Run all tests
     aliases: [t]
     sources:
-      - "./**/*.rs"
+      - ./**/*.rs
     cmd: cargo nextest run
   audit:
     desc: Run cargo security audit
@@ -49,3 +50,13 @@ tasks:
       - Cargo.lock
       - flake.lock
     cmd: cargo audit
+  build:
+    desc: Build the project
+    aliases: [b]
+    sources:
+      - ./**/*.rs
+      - ./Cargo*
+    cmd: cargo build
+  commit:
+    desc: Commit changes using custom script
+    cmd: "{{.BIN}}/commit.sh"

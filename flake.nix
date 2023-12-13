@@ -142,6 +142,7 @@
           deadnix
           git-cliff
           go-task
+          gum # Pretty printing in scripts
           nodePackages.prettier
           statix
 
