@@ -11,6 +11,7 @@ use xz2::write::{XzDecoder, XzEncoder};
 pub struct Xz {
     pub level: u32,
     pub progress: ProgressDisplay,
+    pub chunk_size: usize,
 }
 
 impl Default for Xz {
@@ -18,6 +19,7 @@ impl Default for Xz {
         Xz {
             level: 6,
             progress: ProgressDisplay::Auto,
+            chunk_size: 8192,
         }
     }
 }
@@ -56,8 +58,8 @@ impl Compressor for Xz {
         let mut encoder = XzEncoder::new(output_stream, self.level);
         let mut bar = progress_bar(file_size, self.progress, &output);
         if let Some(progress) = &mut bar {
-            // Copy the input to the output in 8k chunks
-            let mut buffer = [0; 8192];
+            // Copy the input to the output in chunks so that we can update the progress bar
+            let mut buffer = vec![0; self.chunk_size];
             loop {
                 let bytes_read = input_stream.read(&mut buffer)?;
                 if bytes_read == 0 {
@@ -99,8 +101,8 @@ impl Compressor for Xz {
         let mut decoder = XzDecoder::new(output_stream);
         let mut bar = progress_bar(file_size, self.progress, &output);
         if let Some(progress) = &mut bar {
-            // Copy the input to the output in 8k chunks
-            let mut buffer = [0; 8192];
+            // Copy the input to the output in chunks so that we can update the progress bar
+            let mut buffer = vec![0; self.chunk_size];
             loop {
                 let bytes_read = input_stream.read(&mut buffer)?;
                 if bytes_read == 0 {
