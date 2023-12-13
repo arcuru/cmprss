@@ -67,6 +67,8 @@ impl Compressor for Xz {
                 progress.update_input(encoder.total_in());
                 progress.update_output(encoder.total_out());
             }
+            encoder.flush()?;
+            progress.update_output(encoder.total_out());
             progress.finish();
         } else {
             io::copy(&mut input_stream, &mut encoder)?;
@@ -108,6 +110,8 @@ impl Compressor for Xz {
                 progress.update_input(decoder.total_in());
                 progress.update_output(decoder.total_out());
             }
+            decoder.flush()?;
+            progress.update_output(decoder.total_out());
             progress.finish();
         } else {
             io::copy(&mut input_stream, &mut decoder)?;
