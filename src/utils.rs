@@ -12,6 +12,12 @@ pub trait Compressor {
         self.name()
     }
 
+    /// Detect if the input is an archive of this type
+    #[allow(dead_code)]
+    fn is_archive(&self, in_path: &Path) -> bool {
+        in_path.extension().unwrap_or_default() == self.extension()
+    }
+
     /// Generate the default name for the compressed file
     fn default_compressed_filename(&self, in_path: &Path) -> String {
         format!(
@@ -21,14 +27,18 @@ pub trait Compressor {
         )
     }
 
-    // Generate the default extracted filename
+    /// Generate the default extracted filename
     fn default_extracted_filename(&self, in_path: &Path) -> String {
+        // If the file has the extension for this type, return the filename without the extension
+        if in_path.extension().unwrap() == self.extension() {
+            return in_path.file_stem().unwrap().to_str().unwrap().to_string();
+        }
         // If the file has no extension, return the current directory
         if in_path.extension().is_none() {
             return ".".to_string();
         }
-        // Otherwise, return the filename without the extension
-        in_path.file_stem().unwrap().to_str().unwrap().to_string()
+        // Otherwise, return the current directory and hope for the best
+        ".".to_string()
     }
 
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
