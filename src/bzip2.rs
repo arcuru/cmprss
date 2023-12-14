@@ -1,4 +1,7 @@
-use crate::utils::*;
+use crate::{
+    progress::{progress_bar, ProgressArgs},
+    utils::*,
+};
 use bzip2::write::{BzDecoder, BzEncoder};
 use bzip2::Compression;
 use clap::Args;
@@ -13,16 +16,23 @@ pub struct Bzip2Args {
     pub common_args: CommonArgs,
 
     #[clap(flatten)]
+    pub progress_args: ProgressArgs,
+
+    #[clap(flatten)]
     pub level_args: LevelArgs,
 }
 
 pub struct Bzip2 {
     pub level: u32, // 0-9
+    pub progress_args: ProgressArgs,
 }
 
 impl Default for Bzip2 {
     fn default() -> Self {
-        Bzip2 { level: 6 }
+        Bzip2 {
+            level: 6,
+            progress_args: ProgressArgs::default(),
+        }
     }
 }
 
@@ -30,6 +40,7 @@ impl Bzip2 {
     pub fn new(args: &Bzip2Args) -> Self {
         Bzip2 {
             level: args.level_args.level.level,
+            progress_args: args.progress_args,
         }
     }
 }
@@ -47,41 +58,89 @@ impl Compressor for Bzip2 {
 
     /// Compress an input file or pipe to a bz2 archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+        let mut file_size = None;
         let mut input_stream = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() > 1 {
                     return cmprss_error("only 1 file can be compressed at a time");
                 }
-                Box::new(File::open(paths[0].as_path())?)
+                let file = Box::new(File::open(paths[0].as_path())?);
+                // Get the file size for the progress bar
+                if let Ok(metadata) = file.metadata() {
+                    file_size = Some(metadata.len());
+                }
+                file
             }
             CmprssInput::Pipe(pipe) => Box::new(pipe) as Box<dyn Read + Send>,
         };
-        let output_stream: Box<dyn Write + Send> = match output {
+        let output_stream: Box<dyn Write + Send> = match &output {
             CmprssOutput::Path(path) => Box::new(File::create(path)?),
             CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
         };
         let mut encoder = BzEncoder::new(output_stream, Compression::new(self.level));
-        io::copy(&mut input_stream, &mut encoder)?;
+        let mut bar = progress_bar(file_size, self.progress_args.progress, &output);
+        if let Some(progress) = &mut bar {
+            // Copy the input to the output in chunks so that we can update the progress bar
+            let mut buffer = vec![0; self.progress_args.chunk_size.size_in_bytes];
+            loop {
+                let bytes_read = input_stream.read(&mut buffer)?;
+                if bytes_read == 0 {
+                    break;
+                }
+                encoder.write_all(&buffer[..bytes_read])?;
+                progress.update_input(encoder.total_in());
+                progress.update_output(encoder.total_out());
+            }
+            encoder.flush()?;
+            progress.update_output(encoder.total_out());
+            progress.finish();
+        } else {
+            io::copy(&mut input_stream, &mut encoder)?;
+        }
         Ok(())
     }
 
     /// Extract a bz2 archive to a file or pipe
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+        let mut file_size = None;
         let mut input_stream = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() > 1 {
                     return cmprss_error("only 1 file can be extracted at a time");
                 }
-                Box::new(File::open(paths[0].as_path())?)
+                let file = Box::new(File::open(paths[0].as_path())?);
+                // Get the file size for the progress bar
+                if let Ok(metadata) = file.metadata() {
+                    file_size = Some(metadata.len());
+                }
+                file
             }
             CmprssInput::Pipe(pipe) => Box::new(pipe) as Box<dyn Read + Send>,
         };
-        let output_stream: Box<dyn Write + Send> = match output {
+        let output_stream: Box<dyn Write + Send> = match &output {
             CmprssOutput::Path(path) => Box::new(File::create(path)?),
             CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
         };
         let mut decoder = BzDecoder::new(output_stream);
-        io::copy(&mut input_stream, &mut decoder)?;
+        let mut bar = progress_bar(file_size, self.progress_args.progress, &output);
+        if let Some(progress) = &mut bar {
+            // Copy the input to the output in chunks so that we can update the progress bar
+            let mut buffer = vec![0; self.progress_args.chunk_size.size_in_bytes];
+            loop {
+                let bytes_read = input_stream.read(&mut buffer)?;
+                if bytes_read == 0 {
+                    break;
+                }
+                decoder.write_all(&buffer[..bytes_read])?;
+                progress.update_input(decoder.total_in());
+                progress.update_output(decoder.total_out());
+            }
+            decoder.flush()?;
+            progress.update_output(decoder.total_out());
+            progress.finish();
+        } else {
+            io::copy(&mut input_stream, &mut decoder)?;
+        }
         Ok(())
     }
 }
