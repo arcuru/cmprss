@@ -11,7 +11,7 @@ pub enum ProgressDisplay {
     Off,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ChunkSize {
     pub size_in_bytes: usize,
 }
@@ -129,5 +129,56 @@ impl Progress {
     /// Finish the progress bar
     pub fn finish(&self) {
         self.bar.finish();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chunk_size_parsing() {
+        assert!(ChunkSize::from_str("0").is_err());
+        assert!(ChunkSize::from_str("0mb").is_err());
+        assert_eq!(
+            ChunkSize::from_str("1").unwrap(),
+            ChunkSize { size_in_bytes: 1 }
+        );
+        assert_eq!(
+            ChunkSize::from_str("1kb").unwrap(),
+            ChunkSize {
+                size_in_bytes: 1024
+            }
+        );
+        assert_eq!(
+            ChunkSize::from_str("16kib").unwrap(),
+            ChunkSize {
+                size_in_bytes: 16 * 1024
+            }
+        );
+        assert_eq!(
+            ChunkSize::from_str("8mib").unwrap(),
+            ChunkSize {
+                size_in_bytes: 8 * 1024 * 1024
+            }
+        );
+        assert_eq!(
+            ChunkSize::from_str("16mb").unwrap(),
+            ChunkSize {
+                size_in_bytes: 16 * 1024 * 1024
+            }
+        );
+        assert_eq!(
+            ChunkSize::from_str("1gb").unwrap(),
+            ChunkSize {
+                size_in_bytes: 1024 * 1024 * 1024
+            }
+        );
+        assert_eq!(
+            ChunkSize::from_str("16gib").unwrap(),
+            ChunkSize {
+                size_in_bytes: 16 * 1024 * 1024 * 1024
+            }
+        );
     }
 }
