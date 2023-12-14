@@ -1,25 +1,47 @@
 use crate::{
-    progress::{progress_bar, ProgressDisplay},
+    progress::{progress_bar, ProgressArgs},
     utils::*,
 };
+use clap::Args;
 use std::{
     fs::File,
     io::{self, Read, Write},
 };
 use xz2::write::{XzDecoder, XzEncoder};
 
+#[derive(Args, Debug)]
+pub struct XzArgs {
+    #[clap(flatten)]
+    pub common_args: CommonArgs,
+
+    #[clap(flatten)]
+    progress_args: ProgressArgs,
+
+    /// Level of compression.
+    /// This is an int 0-9, with 0 being no compression and 9 being highest compression.
+    #[arg(long, default_value_t = 6)]
+    level: u32,
+}
+
 pub struct Xz {
     pub level: u32,
-    pub progress: ProgressDisplay,
-    pub chunk_size: usize,
+    pub progress_args: ProgressArgs,
 }
 
 impl Default for Xz {
     fn default() -> Self {
         Xz {
             level: 6,
-            progress: ProgressDisplay::Auto,
-            chunk_size: 8192,
+            progress_args: ProgressArgs::default(),
+        }
+    }
+}
+
+impl Xz {
+    pub fn new(args: &XzArgs) -> Xz {
+        Xz {
+            level: args.level,
+            progress_args: args.progress_args,
         }
     }
 }
@@ -56,10 +78,10 @@ impl Compressor for Xz {
             CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
         };
         let mut encoder = XzEncoder::new(output_stream, self.level);
-        let mut bar = progress_bar(file_size, self.progress, &output);
+        let mut bar = progress_bar(file_size, self.progress_args.progress, &output);
         if let Some(progress) = &mut bar {
             // Copy the input to the output in chunks so that we can update the progress bar
-            let mut buffer = vec![0; self.chunk_size];
+            let mut buffer = vec![0; self.progress_args.chunk_size.size_in_bytes];
             loop {
                 let bytes_read = input_stream.read(&mut buffer)?;
                 if bytes_read == 0 {
@@ -99,10 +121,10 @@ impl Compressor for Xz {
             CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
         };
         let mut decoder = XzDecoder::new(output_stream);
-        let mut bar = progress_bar(file_size, self.progress, &output);
+        let mut bar = progress_bar(file_size, self.progress_args.progress, &output);
         if let Some(progress) = &mut bar {
             // Copy the input to the output in chunks so that we can update the progress bar
-            let mut buffer = vec![0; self.chunk_size];
+            let mut buffer = vec![0; self.progress_args.chunk_size.size_in_bytes];
             loop {
                 let bytes_read = input_stream.read(&mut buffer)?;
                 if bytes_read == 0 {

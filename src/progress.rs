@@ -1,11 +1,67 @@
 use crate::utils::CmprssOutput;
+use clap::Args;
 use indicatif::{HumanBytes, ProgressBar};
+use std::str::FromStr;
 
-#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+#[derive(clap::ValueEnum, Clone, Copy, Debug, Default)]
 pub enum ProgressDisplay {
+    #[default]
     Auto,
     On,
     Off,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ChunkSize {
+    pub size_in_bytes: usize,
+}
+
+impl Default for ChunkSize {
+    fn default() -> Self {
+        ChunkSize {
+            size_in_bytes: 8192,
+        }
+    }
+}
+
+impl FromStr for ChunkSize {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Try to parse s as just a number
+        if let Ok(num) = s.parse::<usize>() {
+            return Ok(ChunkSize { size_in_bytes: num });
+        }
+        // Simplify so that we always assume base 2, regardless of whether we see
+        // 'kb' or 'kib'
+        let mut s = s.to_lowercase();
+        if s.ends_with("ib") {
+            s.truncate(s.len() - 2);
+            s.push('b');
+        };
+        let (num_str, unit) = s.split_at(s.len() - 2);
+        let num = num_str.parse::<usize>().map_err(|_| "Invalid number")?;
+
+        let size_in_bytes = match unit {
+            "kb" => num * 1024,
+            "mb" => num * 1024 * 1024,
+            "gb" => num * 1024 * 1024 * 1024,
+            _ => return Err("Invalid unit"),
+        };
+
+        Ok(ChunkSize { size_in_bytes })
+    }
+}
+
+#[derive(Args, Debug, Default, Clone, Copy)]
+pub struct ProgressArgs {
+    /// Show progress.
+    #[arg(long, value_enum, default_value = "auto")]
+    pub progress: ProgressDisplay,
+
+    /// Chunk size to use during the copy when showing the progress bar.
+    #[arg(long, default_value = "8kib")]
+    pub chunk_size: ChunkSize,
 }
 
 /// Progress bar for the compress process

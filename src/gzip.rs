@@ -1,8 +1,20 @@
 use crate::utils::*;
+use clap::Args;
 use flate2::write::GzEncoder;
 use flate2::{read::GzDecoder, Compression};
 use std::fs::File;
 use std::io::{self, Read, Write};
+
+#[derive(Args, Debug)]
+pub struct GzipArgs {
+    #[clap(flatten)]
+    pub common_args: CommonArgs,
+
+    /// Level of compression.
+    /// This is an int 0-9, with 0 being no compression and 9 being highest compression.
+    #[arg(long, default_value_t = 6)]
+    compression: u32,
+}
 
 pub struct Gzip {
     pub compression_level: u32,
@@ -12,6 +24,14 @@ impl Default for Gzip {
     fn default() -> Self {
         Gzip {
             compression_level: 6,
+        }
+    }
+}
+
+impl Gzip {
+    pub fn new(args: &GzipArgs) -> Gzip {
+        Gzip {
+            compression_level: args.compression,
         }
     }
 }

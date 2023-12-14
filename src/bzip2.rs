@@ -1,10 +1,24 @@
 use crate::utils::*;
 use bzip2::write::{BzDecoder, BzEncoder};
 use bzip2::Compression;
+use clap::Args;
 use std::{
     fs::File,
     io::{self, Read, Write},
 };
+
+#[derive(Args, Debug)]
+pub struct Bzip2Args {
+    #[clap(flatten)]
+    pub common_args: CommonArgs,
+
+    /// Level of compression.
+    /// This is an int 0-9, with 0 being no compression and 9 being highest compression.
+    #[arg(long, default_value_t = 6)]
+    level: u32,
+    // TODO: Support keywords none, fast, best
+    // Correspond to 0, 1, 9
+}
 
 pub struct Bzip2 {
     pub level: u32, // 0-9
@@ -13,6 +27,12 @@ pub struct Bzip2 {
 impl Default for Bzip2 {
     fn default() -> Self {
         Bzip2 { level: 6 }
+    }
+}
+
+impl Bzip2 {
+    pub fn new(args: &Bzip2Args) -> Self {
+        Bzip2 { level: args.level }
     }
 }
 

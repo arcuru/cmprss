@@ -5,13 +5,15 @@ mod tar;
 mod utils;
 mod xz;
 
-use clap::{Args, Parser, Subcommand};
+use bzip2::{Bzip2, Bzip2Args};
+use clap::{Parser, Subcommand};
+use gzip::{Gzip, GzipArgs};
 use is_terminal::IsTerminal;
-use progress::ProgressDisplay;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use tar::{Tar, TarArgs};
 use utils::*;
+use xz::{Xz, XzArgs};
 
 /// A compression multi-tool
 #[derive(Parser, Debug)]
@@ -37,134 +39,6 @@ enum Format {
     /// bzip2 compression
     #[clap(visible_alias = "bz2")]
     Bzip2(Bzip2Args),
-}
-
-#[derive(Args, Debug)]
-struct TarArgs {
-    #[clap(flatten)]
-    common_args: CommonArgs,
-}
-
-#[derive(Debug, Clone)]
-struct ChunkSize {
-    size_in_bytes: usize,
-}
-
-impl FromStr for ChunkSize {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Try to parse s as just a number
-        if let Ok(num) = s.parse::<usize>() {
-            return Ok(ChunkSize { size_in_bytes: num });
-        }
-        // Simplify so that we always assume base 2, regardless of whether we see
-        // 'kb' or 'kib'
-        let mut s = s.to_lowercase();
-        if s.ends_with("ib") {
-            s.truncate(s.len() - 2);
-            s.push('b');
-        };
-        let (num_str, unit) = s.split_at(s.len() - 2);
-        let num = num_str.parse::<usize>().map_err(|_| "Invalid number")?;
-
-        let size_in_bytes = match unit {
-            "kb" => num * 1024,
-            "mb" => num * 1024 * 1024,
-            "gb" => num * 1024 * 1024 * 1024,
-            _ => return Err("Invalid unit"),
-        };
-
-        Ok(ChunkSize { size_in_bytes })
-    }
-}
-
-#[derive(Args, Debug)]
-struct ProgressArgs {
-    /// Show progress.
-    #[arg(long, value_enum, default_value = "auto")]
-    progress: ProgressDisplay,
-
-    /// Chunk size to use during the copy when showing the progress bar.
-    #[arg(long, default_value = "8kib")]
-    chunk_size: ChunkSize,
-}
-
-#[derive(Args, Debug)]
-struct CommonArgs {
-    /// Input file/directory
-    #[arg(short, long)]
-    input: Option<String>,
-
-    /// Output file/directory
-    #[arg(short, long)]
-    output: Option<String>,
-
-    /// Compress the input (default)
-    #[arg(short, long)]
-    compress: bool,
-
-    /// Extract the input
-    #[arg(short, long)]
-    extract: bool,
-
-    /// List of I/O
-    /// This consists of all the inputs followed by the single output, with intelligent fallback to stdin/stdout.
-    #[arg()]
-    io_list: Vec<String>,
-
-    /// Ignore pipes when inferring I/O
-    #[arg(long)]
-    ignore_pipes: bool,
-
-    /// Ignore stdin when inferring I/O
-    #[arg(long)]
-    ignore_stdin: bool,
-
-    /// Ignore stdout when inferring I/O
-    #[arg(long)]
-    ignore_stdout: bool,
-}
-
-#[derive(Args, Debug)]
-struct GzipArgs {
-    #[clap(flatten)]
-    common_args: CommonArgs,
-
-    /// Level of compression
-    ///
-    /// This is an int 0-9, with 0 being no compression and 9 being highest compression.
-    #[arg(long, default_value_t = 6)]
-    compression: u32,
-}
-
-#[derive(Args, Debug)]
-struct XzArgs {
-    #[clap(flatten)]
-    common_args: CommonArgs,
-
-    #[clap(flatten)]
-    progress_args: ProgressArgs,
-
-    /// Level of compression
-    ///
-    /// This is an int 0-9, with 0 being no compression and 9 being highest compression.
-    #[arg(long, default_value_t = 6)]
-    level: u32,
-}
-
-#[derive(Args, Debug)]
-struct Bzip2Args {
-    #[clap(flatten)]
-    common_args: CommonArgs,
-
-    /// Level of compression
-    ///
-    /// This is an int 0-9, with 0 being no compression and 9 being highest compression.
-    /// TODO: Support keywords none, fast, best
-    /// Correspond to 0, 1, 9
-    #[arg(long, default_value_t = 6)]
-    level: u32,
 }
 
 /// Get the input filename or return a default file
@@ -335,35 +209,13 @@ fn command<T: Compressor>(compressor: T, args: &CommonArgs) -> Result<(), io::Er
     Ok(())
 }
 
-fn parse_gzip(args: &GzipArgs) -> gzip::Gzip {
-    gzip::Gzip {
-        compression_level: args.compression,
-    }
-}
-
-fn parse_xz(args: &XzArgs) -> xz::Xz {
-    xz::Xz {
-        level: args.level,
-        progress: args.progress_args.progress,
-        chunk_size: args.progress_args.chunk_size.size_in_bytes,
-    }
-}
-
-fn parse_bzip2(args: &Bzip2Args) -> bzip2::Bzip2 {
-    bzip2::Bzip2 { level: args.level }
-}
-
-fn parse_tar(_args: &TarArgs) -> tar::Tar {
-    tar::Tar {}
-}
-
 fn main() {
     let args = CmprssArgs::parse();
     match args.format {
-        Some(Format::Tar(a)) => command(parse_tar(&a), &a.common_args),
-        Some(Format::Gzip(a)) => command(parse_gzip(&a), &a.common_args),
-        Some(Format::Xz(a)) => command(parse_xz(&a), &a.common_args),
-        Some(Format::Bzip2(a)) => command(parse_bzip2(&a), &a.common_args),
+        Some(Format::Tar(a)) => command(Tar::new(&a), &a.common_args),
+        Some(Format::Gzip(a)) => command(Gzip::new(&a), &a.common_args),
+        Some(Format::Xz(a)) => command(Xz::new(&a), &a.common_args),
+        Some(Format::Bzip2(a)) => command(Bzip2::new(&a), &a.common_args),
         _ => Err(io::Error::new(io::ErrorKind::Other, "unknown input")),
     }
     .unwrap_or_else(|e| {

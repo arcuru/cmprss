@@ -1,5 +1,42 @@
+use clap::Args;
 use std::io;
 use std::path::{Path, PathBuf};
+
+#[derive(Args, Debug)]
+pub struct CommonArgs {
+    /// Input file/directory
+    #[arg(short, long)]
+    pub input: Option<String>,
+
+    /// Output file/directory
+    #[arg(short, long)]
+    pub output: Option<String>,
+
+    /// Compress the input (default)
+    #[arg(short, long)]
+    pub compress: bool,
+
+    /// Extract the input
+    #[arg(short, long)]
+    pub extract: bool,
+
+    /// List of I/O.
+    /// This consists of all the inputs followed by the single output, with intelligent fallback to stdin/stdout.
+    #[arg()]
+    pub io_list: Vec<String>,
+
+    /// Ignore pipes when inferring I/O
+    #[arg(long)]
+    pub ignore_pipes: bool,
+
+    /// Ignore stdin when inferring I/O
+    #[arg(long)]
+    pub ignore_stdin: bool,
+
+    /// Ignore stdout when inferring I/O
+    #[arg(long)]
+    pub ignore_stdout: bool,
+}
 
 /// Common interface for all compressor implementations
 #[allow(unused_variables)]

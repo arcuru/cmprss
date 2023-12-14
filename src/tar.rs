@@ -1,5 +1,6 @@
 extern crate tar;
 
+use clap::Args;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::Path;
@@ -7,8 +8,20 @@ use tar::{Archive, Builder};
 
 use crate::utils::*;
 
+#[derive(Args, Debug)]
+pub struct TarArgs {
+    #[clap(flatten)]
+    pub common_args: CommonArgs,
+}
+
 #[derive(Default)]
 pub struct Tar {}
+
+impl Tar {
+    pub fn new(_args: &TarArgs) -> Tar {
+        Tar {}
+    }
+}
 
 impl Compressor for Tar {
     /// Full name for tar, also used for extension
