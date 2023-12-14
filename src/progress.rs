@@ -30,6 +30,9 @@ impl FromStr for ChunkSize {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Try to parse s as just a number
         if let Ok(num) = s.parse::<usize>() {
+            if num == 0 {
+                return Err("Invalid number");
+            }
             return Ok(ChunkSize { size_in_bytes: num });
         }
         // Simplify so that we always assume base 2, regardless of whether we see
@@ -48,6 +51,9 @@ impl FromStr for ChunkSize {
             "gb" => num * 1024 * 1024 * 1024,
             _ => return Err("Invalid unit"),
         };
+        if size_in_bytes == 0 {
+            return Err("Invalid number");
+        }
 
         Ok(ChunkSize { size_in_bytes })
     }
