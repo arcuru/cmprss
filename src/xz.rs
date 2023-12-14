@@ -17,10 +17,8 @@ pub struct XzArgs {
     #[clap(flatten)]
     progress_args: ProgressArgs,
 
-    /// Level of compression.
-    /// This is an int 0-9, with 0 being no compression and 9 being highest compression.
-    #[arg(long, default_value_t = 6)]
-    level: u32,
+    #[clap(flatten)]
+    pub level_args: LevelArgs,
 }
 
 pub struct Xz {
@@ -40,7 +38,7 @@ impl Default for Xz {
 impl Xz {
     pub fn new(args: &XzArgs) -> Xz {
         Xz {
-            level: args.level,
+            level: args.level_args.level.level,
             progress_args: args.progress_args,
         }
     }

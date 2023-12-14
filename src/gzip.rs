@@ -10,10 +10,8 @@ pub struct GzipArgs {
     #[clap(flatten)]
     pub common_args: CommonArgs,
 
-    /// Level of compression.
-    /// This is an int 0-9, with 0 being no compression and 9 being highest compression.
-    #[arg(long, default_value_t = 6)]
-    compression: u32,
+    #[clap(flatten)]
+    pub level_args: LevelArgs,
 }
 
 pub struct Gzip {
@@ -31,7 +29,7 @@ impl Default for Gzip {
 impl Gzip {
     pub fn new(args: &GzipArgs) -> Gzip {
         Gzip {
-            compression_level: args.compression,
+            compression_level: args.level_args.level.level,
         }
     }
 }

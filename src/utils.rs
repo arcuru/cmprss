@@ -1,6 +1,7 @@
 use clap::Args;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 #[derive(Args, Debug)]
 pub struct CommonArgs {
@@ -36,6 +37,48 @@ pub struct CommonArgs {
     /// Ignore stdout when inferring I/O
     #[arg(long)]
     pub ignore_stdout: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CompressionLevel {
+    pub level: u32,
+}
+
+impl Default for CompressionLevel {
+    fn default() -> Self {
+        CompressionLevel { level: 6 }
+    }
+}
+
+impl FromStr for CompressionLevel {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Check for an int
+        if let Ok(level) = s.parse::<u32>() {
+            if level < 10 {
+                return Ok(CompressionLevel { level });
+            } else {
+                return Err("Compression level must be 0-9");
+            }
+        }
+        let s = s.to_lowercase();
+        match s.as_str() {
+            "none" => Ok(CompressionLevel { level: 0 }),
+            "fast" => Ok(CompressionLevel { level: 1 }),
+            "best" => Ok(CompressionLevel { level: 9 }),
+            _ => Err("Invalid compression level"),
+        }
+    }
+}
+
+#[derive(Args, Debug, Default, Clone, Copy)]
+pub struct LevelArgs {
+    /// Level of compression.
+    /// This is an int 0-9, with 0 being no compression and 9 being highest compression.
+    /// Also supports 'none', 'fast', and 'best'.
+    #[arg(long, default_value = "6")]
+    pub level: CompressionLevel,
 }
 
 /// Common interface for all compressor implementations

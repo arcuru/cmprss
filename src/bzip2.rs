@@ -12,12 +12,8 @@ pub struct Bzip2Args {
     #[clap(flatten)]
     pub common_args: CommonArgs,
 
-    /// Level of compression.
-    /// This is an int 0-9, with 0 being no compression and 9 being highest compression.
-    #[arg(long, default_value_t = 6)]
-    level: u32,
-    // TODO: Support keywords none, fast, best
-    // Correspond to 0, 1, 9
+    #[clap(flatten)]
+    pub level_args: LevelArgs,
 }
 
 pub struct Bzip2 {
@@ -32,7 +28,9 @@ impl Default for Bzip2 {
 
 impl Bzip2 {
     pub fn new(args: &Bzip2Args) -> Self {
-        Bzip2 { level: args.level }
+        Bzip2 {
+            level: args.level_args.level.level,
+        }
     }
 }
 
