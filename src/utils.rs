@@ -162,8 +162,8 @@ mod tests {
         assert_eq!(CompressionLevel::from_str("none").unwrap().level, 0);
         assert_eq!(CompressionLevel::from_str("fast").unwrap().level, 1);
         assert_eq!(CompressionLevel::from_str("best").unwrap().level, 9);
-        assert_eq!(CompressionLevel::from_str("-1").is_err(), true);
-        assert_eq!(CompressionLevel::from_str("10").is_err(), true);
-        assert_eq!(CompressionLevel::from_str("foo").is_err(), true);
+        assert!(CompressionLevel::from_str("-1").is_err());
+        assert!(CompressionLevel::from_str("10").is_err());
+        assert!(CompressionLevel::from_str("foo").is_err());
     }
 }
