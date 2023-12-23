@@ -18,12 +18,15 @@ pub struct Bzip2Args {
     #[clap(flatten)]
     pub progress_args: ProgressArgs,
 
-    #[clap(flatten)]
-    pub level_args: LevelArgs,
+    /// Level of compression.
+    /// This is an int 1-9, with 1 being minimal compression and 9 being highest compression.
+    /// Also supports 'fast', and 'best'.
+    #[arg(long, default_value = "9")]
+    pub level: CompressionLevel,
 }
 
 pub struct Bzip2 {
-    pub level: u32, // 0-9
+    pub level: u32, // 1-9
     pub progress_args: ProgressArgs,
 }
 
@@ -39,7 +42,7 @@ impl Default for Bzip2 {
 impl Bzip2 {
     pub fn new(args: &Bzip2Args) -> Self {
         Bzip2 {
-            level: args.level_args.level.level,
+            level: args.level.level,
             progress_args: args.progress_args,
         }
     }
@@ -58,6 +61,9 @@ impl Compressor for Bzip2 {
 
     /// Compress an input file or pipe to a bz2 archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+        if self.level < 1 || self.level > 9 {
+            return cmprss_error("Invalid compression level. Must be 1-9.");
+        }
         let mut file_size = None;
         let mut input_stream = match input {
             CmprssInput::Path(paths) => {
@@ -178,5 +184,39 @@ mod tests {
             .assert(predicate::path::eq_file(file.path()));
 
         Ok(())
+    }
+
+    // Fail with a compression level of 0
+    #[test]
+    fn invalid_compression_level_0() {
+        let compressor = Bzip2 {
+            level: 0,
+            ..Bzip2::default()
+        };
+        let file = assert_fs::NamedTempFile::new("test.txt").unwrap();
+        let working_dir = assert_fs::TempDir::new().unwrap();
+        let archive = working_dir.child("archive.".to_owned() + compressor.extension());
+        let result = compressor.compress(
+            CmprssInput::Path(vec![file.path().to_path_buf()]),
+            CmprssOutput::Path(archive.path().to_path_buf()),
+        );
+        assert!(result.is_err());
+    }
+
+    // Fail with a compression level of 10
+    #[test]
+    fn invalid_compression_level_10() {
+        let compressor = Bzip2 {
+            level: 10,
+            ..Bzip2::default()
+        };
+        let file = assert_fs::NamedTempFile::new("test.txt").unwrap();
+        let working_dir = assert_fs::TempDir::new().unwrap();
+        let archive = working_dir.child("archive.".to_owned() + compressor.extension());
+        let result = compressor.compress(
+            CmprssInput::Path(vec![file.path().to_path_buf()]),
+            CmprssOutput::Path(archive.path().to_path_buf()),
+        );
+        assert!(result.is_err());
     }
 }
