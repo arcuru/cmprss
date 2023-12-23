@@ -60,3 +60,6 @@ tasks:
   commit:
     desc: Commit changes using custom script
     cmd: "{{.BIN}}/commit.sh"
+  test:full:
+    desc: Run comparisons against official tools
+    cmd: "{{.BIN}}/test.sh {{.CLI_ARGS}}"

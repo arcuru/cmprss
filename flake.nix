@@ -148,6 +148,14 @@
 
           # Code coverage
           cargo-tarpaulin
+
+          # For running tests
+          diffutils
+          # Official tools
+          bzip2
+          gnutar
+          gzip
+          xz
         ];
 
         # Many tools read this to find the sources for rust stdlib

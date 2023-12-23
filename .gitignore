@@ -13,3 +13,6 @@
 
 # task files for tracking already run commands
 /.task
+
+# Local cache files for testing
+/.cache
