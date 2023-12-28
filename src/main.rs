@@ -77,7 +77,7 @@ fn get_job<T: Compressor>(compressor: &T, common_args: &CommonArgs) -> Result<Jo
     let action = {
         if common_args.compress {
             Action::Compress
-        } else if common_args.extract {
+        } else if common_args.extract || common_args.decompress {
             Action::Extract
         } else {
             Action::Compress

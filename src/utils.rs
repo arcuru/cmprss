@@ -21,6 +21,10 @@ pub struct CommonArgs {
     #[arg(short, long)]
     pub extract: bool,
 
+    /// Decompress the input. Alias of --extract
+    #[arg(short, long)]
+    pub decompress: bool,
+
     /// List of I/O.
     /// This consists of all the inputs followed by the single output, with intelligent fallback to stdin/stdout.
     #[arg()]
