@@ -1,4 +1,6 @@
 use clap::Args;
+use std::ffi::OsStr;
+use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -97,16 +99,24 @@ pub trait Compressor {
     }
 
     /// Detect if the input is an archive of this type
-    #[allow(dead_code)]
+    /// Just checks the extension by default
+    /// Some compressors may overwrite this to do more advanced detection
     fn is_archive(&self, in_path: &Path) -> bool {
-        in_path.extension().unwrap_or_default() == self.extension()
+        if in_path.extension().is_none() {
+            return false;
+        }
+        in_path.extension().unwrap() == self.extension()
     }
 
     /// Generate the default name for the compressed file
     fn default_compressed_filename(&self, in_path: &Path) -> String {
         format!(
             "{}.{}",
-            in_path.file_name().unwrap().to_str().unwrap(),
+            in_path
+                .file_name()
+                .unwrap_or_else(|| OsStr::new("archive"))
+                .to_str()
+                .unwrap(),
             self.extension()
         )
     }
@@ -131,6 +141,12 @@ pub trait Compressor {
 
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
         cmprss_error("extract_target unimplemented")
+    }
+}
+
+impl fmt::Debug for dyn Compressor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Compressor {{ name: {} }}", self.name())
     }
 }
 

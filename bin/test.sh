@@ -51,7 +51,7 @@ random_dir() {
   local dir="$2"
   mkdir -p "$dir"
   for i in $(seq 1 "$size"); do
-    random_file 1024 "$dir/$i"
+    random_file 128 "$dir/$i"
   done
 }
 

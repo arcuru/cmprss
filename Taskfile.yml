@@ -37,7 +37,10 @@ tasks:
     desc: Run all formatters
     sources:
       - ./**/*.rs
-    cmd: cargo fmt --all
+      - ./**/*.nix
+    cmds:
+      - cargo fmt --all
+      - alejandra .
   test:
     desc: Run all tests
     aliases: [t]

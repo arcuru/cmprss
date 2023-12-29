@@ -16,16 +16,65 @@ Currently supports:
 
 ## Usage
 
-The primary goal of the CLI is to make it easy and consistent to work with any compression format.
-All of the examples will work with _any_ of the supported compression formats.
-Though some formats will fail in certain scenarios as not all compression formats support all types of input/output.
-For example `tar` is unable to support compressing from `stdin` and extracting to `stdout`, because it expects to operate on files.
+The primary goal is to infer behavior based on the input, so that you don't need to remember esoteric CLI arguments.
+
+`cmprss` supports being very explicit about the inputs and outputs for scripting, but will also behave intelligently when you leave out info.
 
 All commands read from left to right, input is always either piped from `stdin` or the first filename(s) specified, and output is either `stdout` or the last filename/directory.
 
-If output filenames are left out, `cmprss` will try to infer the filename based on the compression type.
+The easiest way to understand is to look at some examples
 
-### Examples
+Compress a file with gzip
+
+```bash
+cmprss file.txt file.txt.gz
+```
+
+Compress 2 files into a tar archive
+
+```bash
+cmprss file1.txt file2.txt archive.tar
+```
+
+Compress stdin with xz
+
+```bash
+cat file.txt | cmprss file.xz
+```
+
+Extract a tar archive to the current directory
+
+```bash
+cmprss archive.tar
+```
+
+Extract an xz compressed file
+
+```bash
+cmprss file.xz file.txt
+```
+
+Extract a gzip compressed file to stdout
+
+```bash
+cmprss file.txt.gz > file.txt
+```
+
+`cmprss` doesn't yet support multiple levels of archiving, like `.tar.gz`, but they are easy to work with using pipes
+
+```bash
+cmprss tar uncompressed_dir | cmprss gz > out.tar.gz
+cmprss gzip --extract out.tar.gz | cmprss tar -e output_dir
+
+# Or a full roundtrip in one line
+cmprss tar dir | cmprss gz | cmprss gz -e | cmprss tar -e
+```
+
+### Examples of Explicit Behavior
+
+All these examples will work with _any_ of the supported compression formats, provided that they support the input/output formats.
+
+If output filenames are left out, `cmprss` will try to infer the filename based on the compression type.
 
 Compress a file/directory to a `tar` archive:
 
