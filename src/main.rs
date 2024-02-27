@@ -102,7 +102,7 @@ fn get_path(input: &str) -> Option<PathBuf> {
 /// Guess compressor/action from the two filenames
 /// The compressor may already be given
 fn guess_from_filenames(
-    input: &Vec<PathBuf>,
+    input: &[PathBuf],
     output: &Path,
     compressor: Option<Box<dyn Compressor>>,
 ) -> (Option<Box<dyn Compressor>>, Action) {
