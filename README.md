@@ -20,6 +20,13 @@ Installation is available through source code and cargo. `cargo install cmprss` 
 
 For Nix users, the repository contains a flake and an overlay. `nix run github:arcuru/cmprss`
 
+To install the snap, run: `sudo snap install cmprss`
+Be sure to connect the interfaces: 
+```
+sudo snap connect cmprss:removable-media
+sudo snap connect cmprss:system-backup
+```
+
 ## Usage
 
 The primary goal is to infer behavior based on the input, so that you don't need to remember esoteric CLI arguments.
