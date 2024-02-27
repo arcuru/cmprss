@@ -20,14 +20,20 @@ description: |
 license: MIT
 base: core20
 grade: stable
-confinement: classic
+confinement: strict
 
 apps:
   cmprss:
     command: bin/cmprss
     environment:
       PATH: $SNAP/bin/:$PATH       
-   
+    plugs:
+      - home
+      - network
+      - network-bind
+      - removable-media
+      - system-backup
+      
 parts:
   cmprss:
     source: https://github.com/arcuru/cmprss
