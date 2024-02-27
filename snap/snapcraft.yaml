@@ -42,7 +42,7 @@ parts:
 
     override-pull: |
       snapcraftctl pull
-      snapcraftctl set-version "$(git describe --tags | sed 's/^v//' | cut -d "-" -f3)"
+      snapcraftctl set-version "$(git describe --tags | sed 's/^v//' | cut -d "-" -f2)"
 
     build-packages:
       - cargo
