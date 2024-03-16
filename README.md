@@ -1,5 +1,7 @@
 # cmprss
 
+<a href="https://snapcraft.io/cmprss"><img src="https://snapcraft.io/cmprss/badge.svg" alt="Snap Status"></a>
+
 **Status: Alpha.**
 CLI is relatively stable but likely contains bugs, and there may be future breaking changes.
 
