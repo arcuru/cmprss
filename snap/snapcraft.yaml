@@ -18,7 +18,7 @@ description: |
     For more info, please visit: https://github.com/arcuru/cmprss 
     
 license: MIT
-base: core20
+base: core22
 grade: stable
 confinement: strict
 
