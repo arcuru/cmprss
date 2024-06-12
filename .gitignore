@@ -16,3 +16,6 @@
 
 # Local cache files for testing
 /.cache
+
+# Coverage files
+/coverage

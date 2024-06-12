@@ -27,7 +27,7 @@ jobs:
         run: nix build
 
       # This should really be a noop since the package is already built
-      # This is run to get the coverage file in the right place
+      # This is run to get the coverage file linked
       - name: Build Coverage
         run: nix build -L .#checks.x86_64-linux.cmprss-tarpaulin
 
@@ -36,4 +36,3 @@ jobs:
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: result/cobertura.xml

@@ -66,3 +66,7 @@ tasks:
   test:full:
     desc: Run comparisons against official tools
     cmd: "{{.BIN}}/test.sh {{.CLI_ARGS}}"
+  coverage:
+    desc: Run coverage
+    aliases: [cov]
+    cmd: cargo tarpaulin --skip-clean --out-dir coverage --out lcov

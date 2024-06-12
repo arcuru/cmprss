@@ -93,7 +93,11 @@
         }
         // lib.optionalAttrs (system == "x86_64-linux") {
           # Check code coverage with tarpaulin runs
-          cmprss-tarpaulin = craneLib.cargoTarpaulin commonArgs;
+          cmprss-tarpaulin = craneLib.cargoTarpaulin (commonArgs
+            // {
+              # Use lcov output as thats far more widely supported
+              cargoTarpaulinExtraArgs = "--skip-clean --output-dir $out --out lcov";
+            });
         }
         // {
           # Run formatting checks before commit
