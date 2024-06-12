@@ -48,7 +48,7 @@ tasks:
     aliases: [t]
     sources:
       - ./**/*.rs
-    cmd: cargo nextest run
+    cmd: cargo nextest run --no-default-features
   audit:
     desc: Run cargo security audit
     sources:

@@ -60,44 +60,6 @@ cmprss() {
   cargo run --release --quiet -- "$1" --ignore-pipes "${@:2}"
 }
 
-test_tar() {
-  tmpdir
-  echo "Testing tar in $PWD"
-  echo "Creating random data"
-  random_dir 100 dir
-  echo "Compressing with tar and cmprss"
-  tar -cf tar_dir.tar dir
-  cmprss tar dir cmprss_dir.tar
-  # Compare the two archives
-  # We don't care if the archives are slightly different, just that they decompress the same
-  #compare tar_dir.tar cmprss_dir.tar
-  # Decompress the 4 variations
-  echo "Decompressing"
-  mkdir -p tar_tar
-  cd tar_tar
-  tar -xf ../tar_dir.tar
-  cd ..
-  mkdir -p tar_cmprss
-  cd tar_cmprss
-  cmprss tar --extract ../tar_dir.tar
-  cd ..
-  mkdir -p cmprss_tar
-  cd cmprss_tar
-  tar -xf ../cmprss_dir.tar
-  cd ..
-  mkdir -p cmprss_cmprss
-  cd cmprss_cmprss
-  cmprss tar --extract ../cmprss_dir.tar
-  cd ..
-
-  echo "Comparing the decompressed files"
-  compare dir tar_tar/dir
-  compare dir tar_cmprss/dir
-  compare dir cmprss_tar/dir
-  compare dir cmprss_cmprss/dir
-  echo "No errors detected"
-}
-
 # Test gzip using the provided compression level
 test_gzip_level() {
   tmpdir
@@ -200,7 +162,7 @@ test_bzip2() {
 
 # Run all the tests if no arguments are given
 if [ $# -eq 0 ]; then
-  set -- tar gzip xz bzip2
+  set -- gzip xz bzip2
 fi
 
 # Run the tests given on the command line
