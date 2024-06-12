@@ -12,6 +12,8 @@ tasks:
   ci:full:
     desc: Run CI locally in containers
     cmd: act
+    sources:
+      - ./**/*
   ci:local:
     desc: Run CI locally
     deps: [audit, fmt, test, nix:check, nix:build, clippy, pre-commit, build]
@@ -69,4 +71,4 @@ tasks:
   coverage:
     desc: Run coverage
     aliases: [cov]
-    cmd: cargo tarpaulin --skip-clean --out-dir coverage --out lcov
+    cmd: cargo tarpaulin --skip-clean --output-dir coverage --out lcov
