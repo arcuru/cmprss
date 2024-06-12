@@ -22,5 +22,18 @@ jobs:
         # Run 1 at a time and print all the log files
         run: nix flake check --max-jobs 1 -L
 
+      # This should really be a noop since the package is built in the checks
       - name: Build
         run: nix build
+
+      # This should really be a noop since the package is already built
+      # This is run to get the coverage file in the right place
+      - name: Build Coverage
+        run: nix build -L .#checks.x86_64-linux.cmprss-tarpaulin
+
+      # Upload code coverage
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: result/cobertura.xml
