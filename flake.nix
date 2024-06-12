@@ -96,7 +96,7 @@
           cmprss-tarpaulin = craneLib.cargoTarpaulin (commonArgs
             // {
               # Use lcov output as thats far more widely supported
-              cargoTarpaulinExtraArgs = "--skip-clean --output-dir $out --out lcov";
+              cargoTarpaulinExtraArgs = "--skip-clean --include-tests --output-dir $out --out lcov";
             });
         }
         // {

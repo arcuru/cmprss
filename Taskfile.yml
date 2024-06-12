@@ -71,4 +71,4 @@ tasks:
   coverage:
     desc: Run coverage
     aliases: [cov]
-    cmd: cargo tarpaulin --skip-clean --output-dir coverage --out lcov
+    cmd: cargo tarpaulin --skip-clean --include-tests --output-dir coverage --out lcov --no-default-features

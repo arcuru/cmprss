@@ -57,7 +57,7 @@ random_dir() {
 
 # Run cmprss using cargo to test the current version
 cmprss() {
-  cargo run --release --quiet -- "$@"
+  cargo run --release --quiet -- "$1" --ignore-pipes "${@:2}"
 }
 
 test_tar() {
