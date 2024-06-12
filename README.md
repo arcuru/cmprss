@@ -1,5 +1,7 @@
 # cmprss
 
+<a href="https://snapcraft.io/cmprss"><img src="https://snapcraft.io/cmprss/badge.svg" alt="Snap Status"></a>
+
 **Status: Alpha.**
 CLI is relatively stable but likely contains bugs, and there may be future breaking changes.
 
@@ -19,6 +21,15 @@ Currently supports:
 Installation is available through source code and cargo. `cargo install cmprss` will install the latest version.
 
 For Nix users, the repository contains a flake and an overlay. `nix run github:arcuru/cmprss`
+
+To install the snap, run: `sudo snap install cmprss`
+
+Be sure to connect the interfaces: 
+
+```
+sudo snap connect cmprss:removable-media
+sudo snap connect cmprss:system-backup
+```
 
 ## Usage
 

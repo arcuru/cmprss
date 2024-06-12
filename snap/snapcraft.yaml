@@ -1,0 +1,51 @@
+name: cmprss
+adopt-info: cmprss
+summary: A compression multi-tool for the command line
+description: |
+    Status: Alpha. CLI is relatively stable but likely contains bugs, and there may be 
+    future breaking changes. A compression multi-tool for the command line. Replace tar 
+    with something you can remember. Relevant XKCD.
+
+    Currently supports:
+    bzip2
+    gzip
+    tar
+    xz
+    
+    Basic usage:
+    cmprss file.txt file.txt.gz
+    
+    For more info, please visit: https://github.com/arcuru/cmprss 
+    
+license: MIT
+base: core22
+grade: stable
+confinement: strict
+
+apps:
+  cmprss:
+    command: bin/cmprss
+    environment:
+      PATH: $SNAP/bin/:$PATH       
+    plugs:
+      - home
+      - network
+      - network-bind
+      - removable-media
+      - system-backup
+      
+parts:
+  cmprss:
+    source: https://github.com/arcuru/cmprss
+    source-type: git
+    plugin: rust
+
+    override-pull: |
+      snapcraftctl pull
+      snapcraftctl set-version "$(git describe --tags | sed 's/^v//' | cut -d "_" -f2 | cut -d "-" -f1)"
+
+    build-packages:
+      - cargo
+      - rustc
+      - pkg-config
+      - librust-openssl-sys-dev      
