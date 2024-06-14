@@ -18,18 +18,17 @@ jobs:
       - name: Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@main
 
-      - name: Check
+      - name: Build Cmprss
+        run: nix build
+
+      # Runs all the other checks: formatting, building docs, clippy, etc.
+      - name: Nix Flake Checks
         # Run 1 at a time and print all the log files
         run: nix flake check --max-jobs 1 -L
 
-      # This should really be a noop since the package is built in the checks
-      - name: Build
-        run: nix build
-
-      # This should really be a noop since the package is already built
-      # This is run to get the coverage file linked in result/lcov.info
+      # If everything is successful so far, build and run test coverage
       - name: Build Coverage
-        run: nix build -L .#checks.x86_64-linux.cmprss-tarpaulin
+        run: nix build -L .#coverage
 
       # Upload code coverage
       - name: Upload coverage to Codecov
@@ -37,3 +36,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./result/lcov.info
+      
+      # Run the security audit
+      - name: Security Audit
+        run: nix build .#audit

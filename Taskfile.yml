@@ -41,8 +41,7 @@ tasks:
       - ./**/*.rs
       - ./**/*.nix
     cmds:
-      - cargo fmt --all
-      - alejandra .
+      - nix fmt
   test:
     desc: Run all tests
     aliases: [t]
