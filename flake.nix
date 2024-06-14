@@ -57,7 +57,7 @@
         toolChain = fenixStable.completeToolchain;
 
         # Use the toolchain with the crane helper functions
-        craneLib = inputs.crane.lib.${system}.overrideToolchain toolChain;
+        craneLib = (inputs.crane.mkLib pkgs).overrideToolchain toolChain;
 
         # Clean the src to only have the Rust-relevant files
         src = craneLib.cleanCargoSource (craneLib.path ./.);
