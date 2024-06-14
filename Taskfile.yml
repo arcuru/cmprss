@@ -1,5 +1,9 @@
 # https://taskfile.dev
 
+# These are the helper commands used for managing/testing the repo.
+
+# TODO: These are an odd mix of nix and non-nix commands, which should probably be separated somehow.
+
 version: "3"
 
 vars:
@@ -14,8 +18,9 @@ tasks:
     cmd: act
     sources:
       - ./**/*
-  ci:local:
+  ci:
     desc: Run CI locally
+    aliases: [ci:local]
     deps: [audit, fmt, test, nix:check, nix:build, clippy, pre-commit, build]
   nix:check:
     desc: Run Nix CI checks
@@ -34,7 +39,7 @@ tasks:
     cmd: cargo clippy
   pre-commit:
     desc: Run pre-commit
-    cmd: pre-commit run --all-files --show-diff-on-failure
+    cmd: nix flake check
   fmt:
     desc: Run all formatters
     sources:
@@ -70,4 +75,5 @@ tasks:
   coverage:
     desc: Run coverage
     aliases: [cov]
+    # Many tools don't like the file references from `nix build .#coverage`, so we need to run this outside nix
     cmd: cargo tarpaulin --skip-clean --include-tests --output-dir coverage --out lcov --no-default-features
