@@ -42,9 +42,6 @@ tasks:
     cmd: nix flake check
   fmt:
     desc: Run all formatters
-    sources:
-      - ./**/*.rs
-      - ./**/*.nix
     cmds:
       - nix fmt
   test:

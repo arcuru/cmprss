@@ -1,5 +1,10 @@
 # cmprss
 
+[![build](https://img.shields.io/github/actions/workflow/status/atuinsh/atuin/rust.yml?style=flat-square)](https://github.com/arcuru/cmprss/actions?query=workflow%3ANix)
+[![crates.io](https://img.shields.io/crates/v/cmprss.svg?style=flat-square)](https://crates.io/crates/cmprss)
+[![coverage](https://img.shields.io/codecov/c/github/arcuru/cmprss)](https://codecov.io/gh/arcuru/cmprss)
+![license](https://img.shields.io/github/license/arcuru/cmprss)
+
 **Status: Alpha.**
 CLI is relatively stable but likely contains bugs, and there may be future breaking changes.
 
@@ -140,10 +145,3 @@ A script to help create conforming commits is provided in `bin/commit.sh`, or vi
 PRs that improve the test coverage are encouraged.
 
 Test coverage can be measured using `cargo llvm-cov report` and `cargo tarpaulin`.
-
-### @arcuru
-
-I am the only developer on this right now, and I usually develop by committing directly to the `main` branch.
-For larger features I _may_ go through a PR to run CI and to have some more easily discoverable documentation of a specific feature.
-
-I will stop committing directly to `main` as soon as someone else submits a non-trivial PR and then submits a request to remove this section of the README.
