@@ -36,7 +36,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./result/lcov.info
-      
+
       # Run the security audit
       - name: Security Audit
         run: nix build .#audit

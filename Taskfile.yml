@@ -2,8 +2,6 @@
 
 # These are the helper commands used for managing/testing the repo.
 
-# TODO: These are an odd mix of nix and non-nix commands, which should probably be separated somehow.
-
 version: "3"
 
 vars:
@@ -21,7 +19,11 @@ tasks:
   ci:
     desc: Run CI locally
     aliases: [ci:local]
-    deps: [audit, fmt, test, nix:check, nix:build, clippy, pre-commit, build]
+    deps: [audit, fmt, test, clippy, build]
+  nix:ci:
+    desc: Run CI locally under nix
+    aliases: [ci:local]
+    deps: [nix:check, nix:fmt, nix:build]
   nix:check:
     desc: Run Nix CI checks
     sources:
@@ -29,7 +31,7 @@ tasks:
     cmds:
       - nix flake check
   nix:build:
-    desc: Run Nix Build
+    desc: Build with Nix
     cmds:
       - nix build
   clippy:
@@ -37,13 +39,18 @@ tasks:
     sources:
       - ./**/*.rs
     cmd: cargo clippy
-  pre-commit:
-    desc: Run pre-commit
-    cmd: nix flake check
-  fmt:
-    desc: Run all formatters
+  nix:fmt:
+    desc: Run all formatters using treefmt
     cmds:
       - nix fmt
+  fmt:
+    desc: Run all formatters
+    sources:
+      - ./**/*
+    cmds:
+      - cargo fmt
+      - alejandra .
+      - prettier --write .
   test:
     desc: Run all tests
     aliases: [t]
