@@ -19,3 +19,7 @@
 
 # Coverage files
 /coverage
+
+# Editor files
+/.vscode
+
