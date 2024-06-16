@@ -67,22 +67,21 @@
         # Use the toolchain with the crane helper functions
         craneLib = (inputs.crane.mkLib pkgs).overrideToolchain toolChain;
 
-        # Clean the src to only have the Rust-relevant files
-        src = craneLib.cleanCargoSource (craneLib.path ./.);
-
         # Common arguments for mkCargoDerivation, a helper for the crane functions
         # Arguments can be included here even if they aren't used, but we only
         # place them here if they would otherwise show up in multiple places
         commonArgs = {
-          inherit src cargoArtifacts;
-          meta.mainProgram = "cmprss";
+          inherit cargoArtifacts;
+          # Clean the src to only have the Rust-relevant files
+          src = craneLib.cleanCargoSource ./.;
+          strictDeps = true;
         };
 
         # Build only the cargo dependencies so we can cache them all when running in CI
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
         # Build the actual crate itself, reusing the cargoArtifacts
-        cmprss = craneLib.buildPackage commonArgs;
+        cmprss = craneLib.buildPackage (commonArgs // {meta.mainProgram = "cmprss";});
       in {
         checks = {
           # Build the crate as part of `nix flake check` for convenience
@@ -105,6 +104,7 @@
           nextest = craneLib.cargoNextest commonArgs;
         };
 
+        # This also sets up `nix fmt` to run all formatters
         treefmt = {
           projectRootFile = ./flake.nix;
           programs = {
@@ -153,12 +153,13 @@
           '';
 
           # Include the packages from the defined checks and packages
+          # Installs the full cargo toolchain and the extra tools, e.g. cargo-tarpaulin.
           inputsFrom =
             (builtins.attrValues self.checks.${system})
             ++ (builtins.attrValues self.packages.${system});
 
           # Extra inputs can be added here
-          nativeBuildInputs = with pkgs; [
+          packages = with pkgs; [
             act # For running Github Actions locally
             alejandra
             deadnix
@@ -168,11 +169,9 @@
             nodePackages.prettier
             statix
 
-            # Code coverage
-            cargo-tarpaulin
-
             # For running tests
             diffutils
+
             # Official tools
             bzip2
             gnutar
