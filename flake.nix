@@ -81,7 +81,11 @@
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
         # Build the actual crate itself, reusing the cargoArtifacts
-        cmprss = craneLib.buildPackage (commonArgs // {meta.mainProgram = "cmprss";});
+        cmprss = craneLib.buildPackage (commonArgs
+          // {
+            doCheck = false; # Tests are run as a separate build with nextest
+            meta.mainProgram = "cmprss";
+          });
       in {
         checks = {
           # Build the crate as part of `nix flake check` for convenience
@@ -100,7 +104,6 @@
           fmt = craneLib.cargoFmt commonArgs;
 
           # Run tests with cargo-nextest
-          # Note: This provides limited value, as tests are already run in the build
           nextest = craneLib.cargoNextest commonArgs;
         };
 
