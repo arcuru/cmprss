@@ -81,3 +81,7 @@ tasks:
     aliases: [cov]
     # Many tools don't like the file references from `nix build .#coverage`, so we need to run this outside nix
     cmd: cargo tarpaulin --skip-clean --include-tests --output-dir coverage --out lcov --no-default-features
+  nix:coverage:
+    desc: Create coverage using nix
+    cmds:
+      - nix build .#coverage --out-link coverage

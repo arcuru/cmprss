@@ -87,9 +87,16 @@
             meta.mainProgram = "cmprss";
           });
       in {
-        checks = {
-          # Build the crate as part of `nix flake check` for convenience
-          inherit cmprss;
+        packages = {
+          default = cmprss;
+          cmprss = cmprss;
+
+          # Check code coverage with tarpaulin
+          coverage = craneLib.cargoTarpaulin (commonArgs
+            // {
+              # Use lcov output as thats far more widely supported
+              cargoTarpaulinExtraArgs = "--skip-clean --include-tests --output-dir $out --out lcov";
+            });
 
           # Run clippy (and deny all warnings) on the crate source
           clippy = craneLib.cargoClippy (commonArgs
@@ -104,7 +111,21 @@
           fmt = craneLib.cargoFmt commonArgs;
 
           # Run tests with cargo-nextest
-          nextest = craneLib.cargoNextest commonArgs;
+          test = craneLib.cargoNextest commonArgs;
+
+          # Audit dependencies
+          # This only runs when Cargo.lock files change
+          audit = craneLib.cargoAudit (commonArgs
+            // {
+              inherit (inputs) advisory-db;
+            });
+        };
+
+        checks = {
+          inherit cmprss;
+          # Build almost every package in checks, with exceptions:
+          # - coverage: It requires a full rebuild, and only needs to be run occasionally
+          inherit (self.packages.${system}) clippy doc fmt test audit;
         };
 
         # This also sets up `nix fmt` to run all formatters
@@ -118,24 +139,6 @@
               package = toolChain;
             };
           };
-        };
-
-        packages = {
-          default = cmprss;
-          cmprss = cmprss;
-
-          # Check code coverage with tarpaulin
-          coverage = craneLib.cargoTarpaulin (commonArgs
-            // {
-              # Use lcov output as thats far more widely supported
-              cargoTarpaulinExtraArgs = "--skip-clean --include-tests --output-dir $out --out lcov";
-            });
-
-          # Audit dependencies
-          audit = craneLib.cargoAudit (commonArgs
-            // {
-              inherit (inputs) advisory-db;
-            });
         };
 
         apps = rec {
