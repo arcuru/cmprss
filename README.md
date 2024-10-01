@@ -5,6 +5,8 @@
 [![coverage](https://img.shields.io/codecov/c/github/arcuru/cmprss)](https://codecov.io/gh/arcuru/cmprss)
 ![license](https://img.shields.io/github/license/arcuru/cmprss)
 
+**Mirrored on [GitHub](https://github.com/arcuru/cmprss) and [Codeberg](https://codeberg.org/arcuru/cmprss). GitHub is the official repo, but use either repo to contribute. Issues can't be synced so there may be some duplicates.**
+
 **Status: Alpha.**
 CLI is relatively stable but likely contains bugs, and there may be future breaking changes.
 
