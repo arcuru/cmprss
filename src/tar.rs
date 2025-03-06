@@ -2,9 +2,10 @@ extern crate tar;
 
 use clap::Args;
 use std::fs::File;
-use std::io::{self, Read, Write};
+use std::io::{self, Seek, SeekFrom, Write};
 use std::path::Path;
 use tar::{Archive, Builder};
+use tempfile::tempfile;
 
 use crate::utils::*;
 
@@ -36,82 +37,105 @@ impl Compressor for Tar {
 
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
         match output {
-            CmprssOutput::Pipe(pipe) => self.compress_internal(input, Builder::new(pipe)),
             CmprssOutput::Path(path) => {
-                self.compress_internal(input, Builder::new(File::create(path)?))
+                let file = File::create(path)?;
+                self.compress_internal(input, Builder::new(file))
+            }
+            CmprssOutput::Pipe(mut pipe) => {
+                // Create a temporary file to write the tar to
+                let mut temp_file = tempfile()?;
+                self.compress_internal(input, Builder::new(&mut temp_file))?;
+
+                // Reset the file position to the beginning
+                temp_file.seek(SeekFrom::Start(0))?;
+
+                // Copy the temporary file to the pipe
+                io::copy(&mut temp_file, &mut pipe)?;
+                Ok(())
             }
         }
     }
 
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
-        match input {
-            CmprssInput::Path(paths) => {
-                if paths.len() > 1 {
-                    return cmprss_error("only 1 archive can be extracted at a time");
+        match output {
+            CmprssOutput::Path(ref out_dir) => {
+                // Create the output directory if it doesn't exist
+                if !out_dir.exists() {
+                    std::fs::create_dir_all(out_dir)?;
+                } else if !out_dir.is_dir() {
+                    return cmprss_error("tar extraction output must be a directory");
                 }
-                self.extract_internal(Archive::new(File::open(paths[0].as_path())?), output)
+
+                match input {
+                    CmprssInput::Path(paths) => {
+                        if paths.len() != 1 {
+                            return cmprss_error("tar extraction expects a single archive file");
+                        }
+                        let file = File::open(&paths[0])?;
+                        let mut archive = Archive::new(file);
+                        archive.unpack(out_dir)
+                    }
+                    CmprssInput::Pipe(mut pipe) => {
+                        // Create a temporary file to store the tar content
+                        let mut temp_file = tempfile()?;
+
+                        // Copy from pipe to temporary file
+                        io::copy(&mut pipe, &mut temp_file)?;
+
+                        // Reset the file position to the beginning
+                        temp_file.seek(SeekFrom::Start(0))?;
+
+                        // Extract from the temporary file
+                        let mut archive = Archive::new(temp_file);
+                        archive.unpack(out_dir)
+                    }
+                }
             }
-            CmprssInput::Pipe(pipe) => self.extract_internal(Archive::new(pipe), output),
+            CmprssOutput::Pipe(_) => cmprss_error("tar extraction to stdout is not supported"),
         }
     }
 }
 
 impl Tar {
-    /// Internal extract helper
-    fn extract_internal<R: Read>(
-        &self,
-        mut archive: Archive<R>,
-        output: CmprssOutput,
-    ) -> Result<(), io::Error> {
-        let out_path = match output {
-            CmprssOutput::Pipe(_) => {
-                return cmprss_error("error: tar does not support stdout as extract output")
-            }
-            CmprssOutput::Path(path) => path,
-        };
-        if !out_path.is_dir() {
-            return cmprss_error("error: tar can only extract to a directory");
-        }
-        archive.unpack(out_path)
-    }
-
     /// Internal compress helper
     fn compress_internal<W: Write>(
         &self,
         input: CmprssInput,
         mut archive: Builder<W>,
     ) -> Result<(), io::Error> {
-        let input_files = match input {
-            CmprssInput::Path(paths) => paths,
-            CmprssInput::Pipe(_) => {
-                return cmprss_error("error: tar does not support stdin as input")
+        match input {
+            CmprssInput::Path(paths) => {
+                for path in paths {
+                    if path.is_file() {
+                        archive.append_file(
+                            path.file_name().unwrap(),
+                            &mut File::open(path.as_path())?,
+                        )?;
+                    } else if path.is_dir() {
+                        archive.append_dir_all(path.file_name().unwrap(), path.as_path())?;
+                    } else {
+                        return cmprss_error("unsupported file type for tar compression");
+                    }
+                }
             }
-        };
-        for in_file in input_files {
-            if in_file.is_file() {
-                archive.append_file(
-                    in_file.file_name().unwrap(),
-                    &mut File::open(in_file.as_path())?,
-                )?;
-            } else if in_file.is_dir() {
-                archive.append_dir_all(in_file.file_name().unwrap(), in_file.as_path())?;
-            } else {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "unknown file type",
-                ));
+            CmprssInput::Pipe(mut pipe) => {
+                // For pipe input, we'll create a single file named "archive"
+                let mut temp_file = tempfile()?;
+                io::copy(&mut pipe, &mut temp_file)?;
+                temp_file.seek(SeekFrom::Start(0))?;
+                archive.append_file("archive", &mut temp_file)?;
             }
         }
         archive.finish()
     }
 }
 
-// TODO: Tests will be largely the same for all Compressors, should be able to combine
 #[cfg(test)]
 mod tests {
     use super::*;
     use assert_fs::prelude::*;
     use predicates::prelude::*;
+    use std::path::PathBuf;
 
     #[test]
     fn roundtrip() -> Result<(), Box<dyn std::error::Error>> {
@@ -139,6 +163,37 @@ mod tests {
             .child("test.txt")
             .assert(predicate::path::eq_file(file.path()));
 
+        Ok(())
+    }
+
+    #[test]
+    fn roundtrip_directory() -> Result<(), Box<dyn std::error::Error>> {
+        let compressor = Tar::default();
+        let dir = assert_fs::TempDir::new()?;
+        let file_path = dir.child("file.txt");
+        file_path.write_str("garbage data for testing")?;
+        let working_dir = assert_fs::TempDir::new()?;
+        let archive = working_dir.child("dir_archive.tar");
+        archive.assert(predicate::path::missing());
+
+        compressor.compress(
+            CmprssInput::Path(vec![dir.path().to_path_buf()]),
+            CmprssOutput::Path(archive.path().to_path_buf()),
+        )?;
+        archive.assert(predicate::path::is_file());
+
+        let extract_dir = working_dir.child("extracted");
+        std::fs::create_dir_all(extract_dir.path())?;
+        compressor.extract(
+            CmprssInput::Path(vec![archive.path().to_path_buf()]),
+            CmprssOutput::Path(extract_dir.path().to_path_buf()),
+        )?;
+
+        let dir_name: PathBuf = dir.path().file_name().unwrap().into();
+        extract_dir
+            .child(dir_name)
+            .child("file.txt")
+            .assert(predicate::path::eq_file(file_path.path()));
         Ok(())
     }
 }
