@@ -4,6 +4,7 @@ mod progress;
 mod tar;
 mod utils;
 mod xz;
+mod zip;
 
 use bzip2::{Bzip2, Bzip2Args};
 use clap::{Parser, Subcommand};
@@ -14,6 +15,7 @@ use std::{io, vec};
 use tar::{Tar, TarArgs};
 use utils::*;
 use xz::{Xz, XzArgs};
+use zip::{Zip, ZipArgs};
 
 /// A compression multi-tool
 #[derive(Parser, Debug)]
@@ -27,7 +29,6 @@ struct CmprssArgs {
     #[clap(flatten)]
     pub base_args: CommonArgs,
 }
-
 #[derive(Subcommand, Debug)]
 enum Format {
     /// tar archive format
@@ -43,6 +44,9 @@ enum Format {
     /// bzip2 compression
     #[clap(visible_alias = "bz2")]
     Bzip2(Bzip2Args),
+
+    /// zip archive format
+    Zip(ZipArgs),
 }
 
 /// Get the input filename or return a default file
@@ -86,6 +90,7 @@ fn get_compressor_from_filename(filename: &Path) -> Option<Box<dyn Compressor>> 
         Box::<Gzip>::default(),
         Box::<Xz>::default(),
         Box::<Bzip2>::default(),
+        Box::<Zip>::default(),
     ];
     compressors.into_iter().find(|c| c.is_archive(filename))
 }
@@ -495,6 +500,7 @@ fn main() {
         Some(Format::Gzip(a)) => command(Some(Box::new(Gzip::new(&a))), &a.common_args),
         Some(Format::Xz(a)) => command(Some(Box::new(Xz::new(&a))), &a.common_args),
         Some(Format::Bzip2(a)) => command(Some(Box::new(Bzip2::new(&a))), &a.common_args),
+        Some(Format::Zip(a)) => command(Some(Box::new(Zip::new(&a))), &a.common_args),
         _ => command(None, &args.base_args),
     }
     .unwrap_or_else(|e| {

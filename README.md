@@ -20,6 +20,7 @@ Currently supports:
 - gzip
 - tar
 - xz
+- zip
 
 ## Install
 
