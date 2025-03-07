@@ -21,6 +21,7 @@ Currently supports:
 - tar
 - xz
 - zip
+- zstd
 
 ## Install
 

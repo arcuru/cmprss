@@ -183,6 +183,7 @@
             gnutar
             gzip
             xz
+            zstd
           ];
 
           # Many tools read this to find the sources for rust stdlib

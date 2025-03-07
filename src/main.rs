@@ -5,6 +5,7 @@ mod tar;
 mod utils;
 mod xz;
 mod zip;
+mod zstd;
 
 use bzip2::{Bzip2, Bzip2Args};
 use clap::{Parser, Subcommand};
@@ -16,6 +17,7 @@ use tar::{Tar, TarArgs};
 use utils::*;
 use xz::{Xz, XzArgs};
 use zip::{Zip, ZipArgs};
+use zstd::{Zstd, ZstdArgs};
 
 /// A compression multi-tool
 #[derive(Parser, Debug)]
@@ -47,6 +49,10 @@ enum Format {
 
     /// zip archive format
     Zip(ZipArgs),
+
+    /// zstd compression
+    #[clap(visible_alias = "zst")]
+    Zstd(ZstdArgs),
 }
 
 /// Get the input filename or return a default file
@@ -91,6 +97,7 @@ fn get_compressor_from_filename(filename: &Path) -> Option<Box<dyn Compressor>> 
         Box::<Xz>::default(),
         Box::<Bzip2>::default(),
         Box::<Zip>::default(),
+        Box::<Zstd>::default(),
     ];
     compressors.into_iter().find(|c| c.is_archive(filename))
 }
@@ -501,6 +508,7 @@ fn main() {
         Some(Format::Xz(a)) => command(Some(Box::new(Xz::new(&a))), &a.common_args),
         Some(Format::Bzip2(a)) => command(Some(Box::new(Bzip2::new(&a))), &a.common_args),
         Some(Format::Zip(a)) => command(Some(Box::new(Zip::new(&a))), &a.common_args),
+        Some(Format::Zstd(a)) => command(Some(Box::new(Zstd::new(&a))), &a.common_args),
         _ => command(None, &args.base_args),
     }
     .unwrap_or_else(|e| {

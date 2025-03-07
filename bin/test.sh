@@ -160,9 +160,43 @@ test_bzip2() {
   test_bzip2_level 9 # Default
 }
 
+# Test zstd using the provided compression level
+test_zstd_level() {
+  tmpdir
+  echo "Testing zstd level $1 in $PWD"
+  echo "Creating random data"
+  random_file 1000000 file
+  echo "Compressing with zstd and cmprss"
+  zstd -$1 -c file >zstd_file.zst
+  cmprss zstd --level $1 file cmprss_file.zst --progress=off
+  # Compare the two archives
+  # The archives may have slight variations (versioning or whatever) so we
+  # only compare the sizes to make sure they are similar
+  compare_size zstd_file.zst cmprss_file.zst
+  # Decompress the 4 variations
+  echo "Decompressing"
+  zstd -d -c zstd_file.zst >zstd_zstd
+  zstd -d -c cmprss_file.zst >cmprss_zstd
+  cmprss zstd --extract cmprss_file.zst cmprss_cmprss --progress=off
+  cmprss zstd --extract zstd_file.zst zstd_cmprss --progress=off
+  echo "Comparing the decompressed files"
+  compare file zstd_zstd
+  compare file zstd_cmprss
+  compare file cmprss_cmprss
+  compare file cmprss_zstd
+  echo "No errors detected"
+}
+
+test_zstd() {
+  test_zstd_level 1 # Fast compression
+  test_zstd_level 3
+  test_zstd_level 6 # Default
+  test_zstd_level 9 # High compression
+}
+
 # Run all the tests if no arguments are given
 if [ $# -eq 0 ]; then
-  set -- gzip xz bzip2
+  set -- gzip xz bzip2 zstd
 fi
 
 # Run the tests given on the command line
