@@ -18,6 +18,7 @@ Currently supports:
 
 - bzip2
 - gzip
+- lz4
 - tar
 - xz
 - zip

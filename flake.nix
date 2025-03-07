@@ -182,6 +182,7 @@
             bzip2
             gnutar
             gzip
+            lz4
             xz
             zstd
           ];

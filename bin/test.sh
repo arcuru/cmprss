@@ -194,9 +194,36 @@ test_zstd() {
   test_zstd_level 9 # High compression
 }
 
+# Test lz4 compression
+test_lz4() {
+  tmpdir
+  echo "Testing lz4 in $PWD"
+  echo "Creating random data"
+  random_file 1000000 file
+  echo "Compressing with lz4 and cmprss"
+  lz4 -c file >lz4_file.lz4
+  cmprss lz4 file cmprss_file.lz4 --progress=off
+  # Compare the two archives
+  # The archives may have slight variations (versioning or whatever) so we
+  # only compare the sizes to make sure they are similar
+  compare_size lz4_file.lz4 cmprss_file.lz4
+  # Decompress the 4 variations
+  echo "Decompressing"
+  lz4 -d -c lz4_file.lz4 >lz4_lz4
+  lz4 -d -c cmprss_file.lz4 >cmprss_lz4
+  cmprss lz4 --extract cmprss_file.lz4 cmprss_cmprss --progress=off
+  cmprss lz4 --extract lz4_file.lz4 lz4_cmprss --progress=off
+  echo "Comparing the decompressed files"
+  compare file lz4_lz4
+  compare file lz4_cmprss
+  compare file cmprss_cmprss
+  compare file cmprss_lz4
+  echo "No errors detected"
+}
+
 # Run all the tests if no arguments are given
 if [ $# -eq 0 ]; then
-  set -- gzip xz bzip2 zstd
+  set -- gzip xz bzip2 zstd lz4
 fi
 
 # Run the tests given on the command line

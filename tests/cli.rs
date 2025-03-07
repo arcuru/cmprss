@@ -1249,4 +1249,138 @@ mod cli {
 
         Ok(())
     }
+
+    #[test]
+    fn lz4_roundtrip_explicit() -> Result<(), Box<dyn std::error::Error>> {
+        let mut cmd = Command::cargo_bin("cmprss")?;
+        let dir = assert_fs::TempDir::new()?;
+
+        // Create a test file
+        let test_file = dir.child("test.txt");
+        test_file.write_str("This is a test file for LZ4 compression.")?;
+
+        // Create output paths
+        let compressed_file = dir.child("test.txt.lz4");
+        let extracted_file = dir.child("test_extracted.txt");
+
+        // Compress the file
+        cmd.arg("lz4")
+            .arg("--compress")
+            .arg(test_file.path())
+            .arg(compressed_file.path())
+            .arg("--progress=off");
+
+        cmd.assert().success();
+        compressed_file.assert(predicates::path::exists());
+
+        // Extract the file
+        let mut cmd = Command::cargo_bin("cmprss")?;
+        cmd.arg("lz4")
+            .arg("--extract")
+            .arg(compressed_file.path())
+            .arg(extracted_file.path())
+            .arg("--progress=off");
+
+        cmd.assert().success();
+        extracted_file.assert(predicates::path::exists());
+
+        // Verify the contents
+        let original_content = std::fs::read_to_string(test_file.path())?;
+        let extracted_content = std::fs::read_to_string(extracted_file.path())?;
+        assert_eq!(original_content, extracted_content);
+
+        Ok(())
+    }
+
+    #[test]
+    fn lz4_roundtrip_stdin() -> Result<(), Box<dyn std::error::Error>> {
+        let mut cmd = Command::cargo_bin("cmprss")?;
+        let dir = assert_fs::TempDir::new()?;
+
+        // Create a test file
+        let test_file = dir.child("test.txt");
+        test_file.write_str("This is a test file for LZ4 compression via stdin.")?;
+
+        // Create output paths
+        let compressed_file = dir.child("test.txt.lz4");
+        let extracted_file = dir.child("test_extracted.txt");
+
+        // Compress the file via stdin
+        let test_content = std::fs::read_to_string(test_file.path())?;
+        cmd.arg("lz4")
+            .arg("--compress")
+            .arg("--output")
+            .arg(compressed_file.path())
+            .arg("--progress=off")
+            .stdin(Stdio::piped());
+
+        let mut child = cmd.spawn()?;
+        if let Some(stdin) = child.stdin.as_mut() {
+            use std::io::Write;
+            stdin.write_all(test_content.as_bytes())?;
+        }
+        let output = child.wait_with_output()?;
+        assert!(output.status.success());
+        compressed_file.assert(predicate::path::exists());
+
+        // Extract the file
+        let mut cmd = Command::cargo_bin("cmprss")?;
+        cmd.arg("lz4")
+            .arg("--extract")
+            .arg(compressed_file.path())
+            .arg(extracted_file.path())
+            .arg("--progress=off");
+
+        cmd.assert().success();
+        extracted_file.assert(predicate::path::exists());
+
+        // Verify the contents
+        let original_content = std::fs::read_to_string(test_file.path())?;
+        let extracted_content = std::fs::read_to_string(extracted_file.path())?;
+        assert_eq!(original_content, extracted_content);
+
+        Ok(())
+    }
+
+    #[test]
+    fn lz4_roundtrip_stdout() -> Result<(), Box<dyn std::error::Error>> {
+        let mut cmd = Command::cargo_bin("cmprss")?;
+        let dir = assert_fs::TempDir::new()?;
+
+        // Create a test file
+        let test_file = dir.child("test.txt");
+        test_file.write_str("This is a test file for LZ4 compression to stdout.")?;
+
+        // Create output paths
+        let compressed_file = dir.child("test.txt.lz4");
+        let extracted_file = dir.child("test_extracted.txt");
+
+        // Compress the file
+        cmd.arg("lz4")
+            .arg("--compress")
+            .arg(test_file.path())
+            .arg("--progress=off");
+
+        let output = cmd.output()?;
+        assert!(output.status.success());
+        std::fs::write(compressed_file.path(), output.stdout)?;
+
+        // Extract the file to stdout
+        let mut cmd = Command::cargo_bin("cmprss")?;
+        cmd.arg("lz4")
+            .arg("--extract")
+            .arg(compressed_file.path())
+            .arg("--progress=off");
+
+        let output = cmd.output()?;
+        assert!(output.status.success());
+        std::fs::write(extracted_file.path(), output.stdout)?;
+
+        // Verify the contents
+        let original_content = std::fs::read_to_string(test_file.path())?;
+        let extracted_content = std::fs::read_to_string(extracted_file.path())?;
+        assert_eq!(original_content, extracted_content);
+
+        Ok(())
+    }
 }

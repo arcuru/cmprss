@@ -43,6 +43,9 @@ enum Format {
     /// zstd compression
     #[clap(visible_alias = "zst")]
     Zstd(ZstdArgs),
+
+    /// lz4 compression
+    Lz4(Lz4Args),
 }
 
 /// Get the input filename or return a default file
@@ -88,6 +91,7 @@ fn get_compressor_from_filename(filename: &Path) -> Option<Box<dyn Compressor>> 
         Box::<Bzip2>::default(),
         Box::<Zip>::default(),
         Box::<Zstd>::default(),
+        Box::<Lz4>::default(),
     ];
     compressors.into_iter().find(|c| c.is_archive(filename))
 }
@@ -499,6 +503,7 @@ fn main() {
         Some(Format::Bzip2(a)) => command(Some(Box::new(Bzip2::new(&a))), &a.common_args),
         Some(Format::Zip(a)) => command(Some(Box::new(Zip::new(&a))), &a.common_args),
         Some(Format::Zstd(a)) => command(Some(Box::new(Zstd::new(&a))), &a.common_args),
+        Some(Format::Lz4(a)) => command(Some(Box::new(Lz4::new(&a))), &a.common_args),
         _ => command(None, &args.base_args),
     }
     .unwrap_or_else(|e| {
