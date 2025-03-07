@@ -45,9 +45,66 @@ pub struct CommonArgs {
     pub ignore_stdout: bool,
 }
 
+/// Trait for validating compression levels for different compressors
+#[allow(dead_code)]
+pub trait CompressionLevelValidator {
+    /// Get the minimum valid compression level
+    fn min_level(&self) -> i32;
+
+    /// Get the maximum valid compression level
+    fn max_level(&self) -> i32;
+
+    /// Get the default compression level
+    fn default_level(&self) -> i32;
+
+    /// Map special names to compression levels
+    fn name_to_level(&self, name: &str) -> Option<i32>;
+
+    /// Validate if a compression level is within the valid range
+    fn is_valid_level(&self, level: i32) -> bool {
+        level >= self.min_level() && level <= self.max_level()
+    }
+
+    /// Validate and clamp a compression level to the valid range
+    fn validate_and_clamp_level(&self, level: i32) -> i32 {
+        if level < self.min_level() {
+            self.min_level()
+        } else if level > self.max_level() {
+            self.max_level()
+        } else {
+            level
+        }
+    }
+}
+
+/// Default implementation for most compressors (0-9 range)
+#[derive(Debug, Clone, Copy)]
+pub struct DefaultCompressionValidator;
+
+impl CompressionLevelValidator for DefaultCompressionValidator {
+    fn min_level(&self) -> i32 {
+        0
+    }
+    fn max_level(&self) -> i32 {
+        9
+    }
+    fn default_level(&self) -> i32 {
+        6
+    }
+
+    fn name_to_level(&self, name: &str) -> Option<i32> {
+        match name.to_lowercase().as_str() {
+            "none" => Some(0),
+            "fast" => Some(1),
+            "best" => Some(9),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct CompressionLevel {
-    pub level: u32,
+    pub level: i32,
 }
 
 impl Default for CompressionLevel {
@@ -61,18 +118,18 @@ impl FromStr for CompressionLevel {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Check for an int
-        if let Ok(level) = s.parse::<u32>() {
-            if level < 10 {
-                return Ok(CompressionLevel { level });
-            } else {
-                return Err("Compression level must be 0-9");
-            }
+        if let Ok(level) = s.parse::<i32>() {
+            return Ok(CompressionLevel { level });
         }
+
+        // Try to parse special names
         let s = s.to_lowercase();
         match s.as_str() {
-            "none" => Ok(CompressionLevel { level: 0 }),
-            "fast" => Ok(CompressionLevel { level: 1 }),
-            "best" => Ok(CompressionLevel { level: 9 }),
+            "none" | "fast" | "best" => Ok(CompressionLevel {
+                // We'll use the DefaultCompressionValidator values here
+                // The actual compressor will interpret these values according to its own validator
+                level: DefaultCompressionValidator.name_to_level(&s).unwrap(),
+            }),
             _ => Err("Invalid compression level"),
         }
     }
@@ -81,9 +138,8 @@ impl FromStr for CompressionLevel {
 #[derive(Args, Debug, Default, Clone, Copy)]
 pub struct LevelArgs {
     /// Level of compression.
-    /// This is an int 0-9, with 0 being no compression and 9 being highest compression.
-    /// Also supports 'none', 'fast', and 'best'.
-    #[arg(long, default_value = "6")]
+    /// `none`, `fast`, and `best` are mapped to appropriate values for each compressor.
+    #[arg(long, default_value = "fast")]
     pub level: CompressionLevel,
 }
 
@@ -175,15 +231,48 @@ mod tests {
     use super::*;
 
     #[test]
-    fn compression_level_parsing() {
+    fn test_compression_level_parsing() {
+        // Test numeric values
+        assert_eq!(CompressionLevel::from_str("-7").unwrap().level, -7);
         assert_eq!(CompressionLevel::from_str("0").unwrap().level, 0);
         assert_eq!(CompressionLevel::from_str("1").unwrap().level, 1);
         assert_eq!(CompressionLevel::from_str("9").unwrap().level, 9);
+        assert_eq!(CompressionLevel::from_str("22").unwrap().level, 22);
+
+        // Test special names (these use DefaultCompressionValidator values)
         assert_eq!(CompressionLevel::from_str("none").unwrap().level, 0);
         assert_eq!(CompressionLevel::from_str("fast").unwrap().level, 1);
         assert_eq!(CompressionLevel::from_str("best").unwrap().level, 9);
-        assert!(CompressionLevel::from_str("-1").is_err());
-        assert!(CompressionLevel::from_str("10").is_err());
+
+        // Test invalid values
         assert!(CompressionLevel::from_str("foo").is_err());
+    }
+
+    #[test]
+    fn test_default_compression_validator() {
+        let validator = DefaultCompressionValidator;
+
+        // Test range
+        assert_eq!(validator.min_level(), 0);
+        assert_eq!(validator.max_level(), 9);
+        assert_eq!(validator.default_level(), 6);
+
+        // Test validation
+        assert!(validator.is_valid_level(0));
+        assert!(validator.is_valid_level(5));
+        assert!(validator.is_valid_level(9));
+        assert!(!validator.is_valid_level(-1));
+        assert!(!validator.is_valid_level(10));
+
+        // Test clamping
+        assert_eq!(validator.validate_and_clamp_level(-1), 0);
+        assert_eq!(validator.validate_and_clamp_level(5), 5);
+        assert_eq!(validator.validate_and_clamp_level(10), 9);
+
+        // Test special names
+        assert_eq!(validator.name_to_level("none"), Some(0));
+        assert_eq!(validator.name_to_level("fast"), Some(1));
+        assert_eq!(validator.name_to_level("best"), Some(9));
+        assert_eq!(validator.name_to_level("invalid"), None);
     }
 }

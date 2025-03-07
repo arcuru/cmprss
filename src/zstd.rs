@@ -1,9 +1,37 @@
 use crate::progress::{copy_with_progress, ProgressArgs};
-use crate::utils::*;
+use crate::utils::{
+    cmprss_error, CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
+    LevelArgs,
+};
 use clap::Args;
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use zstd::stream::{read::Decoder, write::Encoder};
+
+/// Zstd-specific compression validator (-7 to 22 range)
+#[derive(Debug, Clone, Copy)]
+pub struct ZstdCompressionValidator;
+
+impl CompressionLevelValidator for ZstdCompressionValidator {
+    fn min_level(&self) -> i32 {
+        -7
+    }
+    fn max_level(&self) -> i32 {
+        22
+    }
+    fn default_level(&self) -> i32 {
+        1
+    }
+
+    fn name_to_level(&self, name: &str) -> Option<i32> {
+        match name.to_lowercase().as_str() {
+            "none" => Some(-7),
+            "fast" => Some(1),
+            "best" => Some(22),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Args, Debug)]
 pub struct ZstdArgs {
@@ -18,14 +46,15 @@ pub struct ZstdArgs {
 }
 
 pub struct Zstd {
-    pub compression_level: u32,
+    pub compression_level: i32,
     pub progress_args: ProgressArgs,
 }
 
 impl Default for Zstd {
     fn default() -> Self {
+        let validator = ZstdCompressionValidator;
         Zstd {
-            compression_level: 6,
+            compression_level: validator.default_level(),
             progress_args: ProgressArgs::default(),
         }
     }
@@ -33,8 +62,14 @@ impl Default for Zstd {
 
 impl Zstd {
     pub fn new(args: &ZstdArgs) -> Zstd {
+        let validator = ZstdCompressionValidator;
+        let mut level = args.level_args.level.level;
+
+        // Validate and clamp the level to zstd's valid range
+        level = validator.validate_and_clamp_level(level);
+
         Zstd {
-            compression_level: args.level_args.level.level,
+            compression_level: level,
             progress_args: args.progress_args,
         }
     }
@@ -100,7 +135,7 @@ impl Compressor for Zstd {
         };
 
         // Create a zstd encoder with the specified compression level
-        let mut encoder = Encoder::new(output_stream, self.compression_level as i32)?;
+        let mut encoder = Encoder::new(output_stream, self.compression_level)?;
 
         // Copy the input to the encoder with progress reporting
         copy_with_progress(
@@ -196,5 +231,33 @@ mod tests {
         assert_eq!(test_data.to_vec(), output_data);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_zstd_compression_validator() {
+        let validator = ZstdCompressionValidator;
+
+        // Test range
+        assert_eq!(validator.min_level(), -7);
+        assert_eq!(validator.max_level(), 22);
+        assert_eq!(validator.default_level(), 1);
+
+        // Test validation
+        assert!(validator.is_valid_level(-7));
+        assert!(validator.is_valid_level(0));
+        assert!(validator.is_valid_level(22));
+        assert!(!validator.is_valid_level(-8));
+        assert!(!validator.is_valid_level(23));
+
+        // Test clamping
+        assert_eq!(validator.validate_and_clamp_level(-8), -7);
+        assert_eq!(validator.validate_and_clamp_level(0), 0);
+        assert_eq!(validator.validate_and_clamp_level(23), 22);
+
+        // Test special names
+        assert_eq!(validator.name_to_level("none"), Some(-7));
+        assert_eq!(validator.name_to_level("fast"), Some(1));
+        assert_eq!(validator.name_to_level("best"), Some(22));
+        assert_eq!(validator.name_to_level("invalid"), None);
     }
 }

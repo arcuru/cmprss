@@ -19,14 +19,15 @@ pub struct GzipArgs {
 }
 
 pub struct Gzip {
-    pub compression_level: u32,
+    pub compression_level: i32,
     pub progress_args: ProgressArgs,
 }
 
 impl Default for Gzip {
     fn default() -> Self {
+        let validator = DefaultCompressionValidator;
         Gzip {
-            compression_level: 6,
+            compression_level: validator.default_level(),
             progress_args: ProgressArgs::default(),
         }
     }
@@ -34,8 +35,14 @@ impl Default for Gzip {
 
 impl Gzip {
     pub fn new(args: &GzipArgs) -> Gzip {
+        let validator = DefaultCompressionValidator;
+        let level = args.level_args.level.level;
+
+        // Validate and clamp the level to gzip's valid range
+        let level = validator.validate_and_clamp_level(level);
+
         Gzip {
-            compression_level: args.level_args.level.level,
+            compression_level: level,
             progress_args: args.progress_args,
         }
     }
@@ -100,7 +107,11 @@ impl Compressor for Gzip {
             CmprssOutput::Pipe(stdout) => Box::new(BufWriter::new(stdout)),
         };
 
-        let mut encoder = GzEncoder::new(output_stream, Compression::new(self.compression_level));
+        // Create a gzip encoder with the specified compression level
+        let mut encoder = GzEncoder::new(
+            output_stream,
+            Compression::new(self.compression_level as u32),
+        );
 
         // Use the custom output function to handle progress bar updates with CountingWriter
         copy_with_progress(

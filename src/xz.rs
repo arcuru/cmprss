@@ -7,7 +7,8 @@ use std::{
     fs::File,
     io::{self, Read, Write},
 };
-use xz2::write::{XzDecoder, XzEncoder};
+use xz2::read::XzDecoder;
+use xz2::write::XzEncoder;
 
 #[derive(Args, Debug)]
 pub struct XzArgs {
@@ -22,14 +23,15 @@ pub struct XzArgs {
 }
 
 pub struct Xz {
-    pub level: u32,
+    pub level: i32,
     pub progress_args: ProgressArgs,
 }
 
 impl Default for Xz {
     fn default() -> Self {
+        let validator = DefaultCompressionValidator;
         Xz {
-            level: 6,
+            level: validator.default_level(),
             progress_args: ProgressArgs::default(),
         }
     }
@@ -37,8 +39,11 @@ impl Default for Xz {
 
 impl Xz {
     pub fn new(args: &XzArgs) -> Xz {
+        let validator = DefaultCompressionValidator;
+        let level = validator.validate_and_clamp_level(args.level_args.level.level);
+
         Xz {
-            level: args.level_args.level.level,
+            level,
             progress_args: args.progress_args,
         }
     }
@@ -75,7 +80,7 @@ impl Compressor for Xz {
             CmprssOutput::Path(path) => Box::new(File::create(path)?),
             CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
         };
-        let mut encoder = XzEncoder::new(output_stream, self.level);
+        let mut encoder = XzEncoder::new(output_stream, self.level as u32);
 
         // Use the custom output function to handle progress bar updates
         copy_with_progress(
@@ -92,7 +97,7 @@ impl Compressor for Xz {
 
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
         let mut file_size = None;
-        let mut input_stream = match input {
+        let input_stream: Box<dyn Read + Send> = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() > 1 {
                     return cmprss_error("only 1 file can be extracted at a time");
@@ -106,16 +111,18 @@ impl Compressor for Xz {
             }
             CmprssInput::Pipe(pipe) => Box::new(pipe) as Box<dyn Read + Send>,
         };
-        let output_stream: Box<dyn Write + Send> = match &output {
+        let mut output_stream: Box<dyn Write + Send> = match &output {
             CmprssOutput::Path(path) => Box::new(File::create(path)?),
             CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
         };
-        let mut decoder = XzDecoder::new(output_stream);
+
+        // Create an XZ decoder to decompress the input
+        let mut decoder = XzDecoder::new(input_stream);
 
         // Use the custom output function to handle progress bar updates
         copy_with_progress(
-            &mut input_stream,
             &mut decoder,
+            &mut *output_stream,
             self.progress_args.chunk_size.size_in_bytes,
             file_size,
             self.progress_args.progress,

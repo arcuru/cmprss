@@ -1,6 +1,9 @@
 use crate::{
     progress::{copy_with_progress, ProgressArgs},
-    utils::*,
+    utils::{
+        cmprss_error, CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
+        LevelArgs,
+    },
 };
 use bzip2::write::{BzDecoder, BzEncoder};
 use bzip2::Compression;
@@ -10,6 +13,30 @@ use std::{
     io::{self, Read, Write},
 };
 
+/// BZip2-specific compression validator (1-9 range)
+#[derive(Debug, Clone, Copy)]
+pub struct Bzip2CompressionValidator;
+
+impl CompressionLevelValidator for Bzip2CompressionValidator {
+    fn min_level(&self) -> i32 {
+        1
+    }
+    fn max_level(&self) -> i32 {
+        9
+    }
+    fn default_level(&self) -> i32 {
+        9
+    }
+
+    fn name_to_level(&self, name: &str) -> Option<i32> {
+        match name.to_lowercase().as_str() {
+            "fast" => Some(1),
+            "best" => Some(9),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Args, Debug)]
 pub struct Bzip2Args {
     #[clap(flatten)]
@@ -18,22 +45,20 @@ pub struct Bzip2Args {
     #[clap(flatten)]
     pub progress_args: ProgressArgs,
 
-    /// Level of compression.
-    /// This is an int 1-9, with 1 being minimal compression and 9 being highest compression.
-    /// Also supports 'fast', and 'best'.
-    #[arg(long, default_value = "9")]
-    pub level: CompressionLevel,
+    #[clap(flatten)]
+    pub level_args: LevelArgs,
 }
 
 pub struct Bzip2 {
-    pub level: u32, // 1-9
+    pub level: i32, // 1-9
     pub progress_args: ProgressArgs,
 }
 
 impl Default for Bzip2 {
     fn default() -> Self {
+        let validator = Bzip2CompressionValidator;
         Bzip2 {
-            level: 6,
+            level: validator.default_level(),
             progress_args: ProgressArgs::default(),
         }
     }
@@ -41,8 +66,11 @@ impl Default for Bzip2 {
 
 impl Bzip2 {
     pub fn new(args: &Bzip2Args) -> Self {
+        let validator = Bzip2CompressionValidator;
+        let level = validator.validate_and_clamp_level(args.level_args.level.level);
+
         Bzip2 {
-            level: args.level.level,
+            level,
             progress_args: args.progress_args,
         }
     }
@@ -61,9 +89,6 @@ impl Compressor for Bzip2 {
 
     /// Compress an input file or pipe to a bz2 archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
-        if self.level < 1 || self.level > 9 {
-            return cmprss_error("Invalid compression level. Must be 1-9.");
-        }
         let mut file_size = None;
         let mut input_stream = match input {
             CmprssInput::Path(paths) => {
@@ -83,7 +108,7 @@ impl Compressor for Bzip2 {
             CmprssOutput::Path(path) => Box::new(File::create(path)?),
             CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
         };
-        let mut encoder = BzEncoder::new(output_stream, Compression::new(self.level));
+        let mut encoder = BzEncoder::new(output_stream, Compression::new(self.level as u32));
 
         // Use the custom output function to handle progress bar updates
         copy_with_progress(
@@ -140,6 +165,34 @@ mod tests {
     use super::*;
     use assert_fs::prelude::*;
     use predicates::prelude::*;
+
+    #[test]
+    fn test_bzip2_compression_validator() {
+        let validator = Bzip2CompressionValidator;
+
+        // Test range
+        assert_eq!(validator.min_level(), 1);
+        assert_eq!(validator.max_level(), 9);
+        assert_eq!(validator.default_level(), 9);
+
+        // Test validation
+        assert!(validator.is_valid_level(1));
+        assert!(validator.is_valid_level(5));
+        assert!(validator.is_valid_level(9));
+        assert!(!validator.is_valid_level(0));
+        assert!(!validator.is_valid_level(10));
+
+        // Test clamping
+        assert_eq!(validator.validate_and_clamp_level(0), 1);
+        assert_eq!(validator.validate_and_clamp_level(5), 5);
+        assert_eq!(validator.validate_and_clamp_level(10), 9);
+
+        // Test special names
+        assert_eq!(validator.name_to_level("fast"), Some(1));
+        assert_eq!(validator.name_to_level("best"), Some(9));
+        assert_eq!(validator.name_to_level("none"), None);
+        assert_eq!(validator.name_to_level("invalid"), None);
+    }
 
     #[test]
     fn roundtrip() -> Result<(), Box<dyn std::error::Error>> {
