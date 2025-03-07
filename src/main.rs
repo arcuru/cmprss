@@ -1,23 +1,13 @@
-mod bzip2;
-mod gzip;
+mod backends;
 mod progress;
-mod tar;
 mod utils;
-mod xz;
-mod zip;
-mod zstd;
 
-use bzip2::{Bzip2, Bzip2Args};
+use backends::*;
 use clap::{Parser, Subcommand};
-use gzip::{Gzip, GzipArgs};
 use is_terminal::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::{io, vec};
-use tar::{Tar, TarArgs};
 use utils::*;
-use xz::{Xz, XzArgs};
-use zip::{Zip, ZipArgs};
-use zstd::{Zstd, ZstdArgs};
 
 /// A compression multi-tool
 #[derive(Parser, Debug)]
