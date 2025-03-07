@@ -36,9 +36,10 @@ tasks:
       - nix build
   clippy:
     desc: Run clippy
-    sources:
-      - ./**/*.rs
     cmd: cargo clippy
+  clippy:fix:
+    desc: Run clippy and fix errors
+    cmd: cargo clippy --fix --allow-dirty --allow-staged
   nix:fmt:
     desc: Run all formatters using treefmt
     cmds:
