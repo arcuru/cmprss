@@ -14,8 +14,6 @@ tasks:
   ci:full:
     desc: Run CI locally in containers
     cmd: act
-    sources:
-      - ./**/*
   ci:
     desc: Run CI locally
     aliases: [ci:local]
@@ -26,8 +24,6 @@ tasks:
     deps: [nix:check, nix:fmt, nix:build]
   nix:check:
     desc: Run Nix CI checks
-    sources:
-      - ./**/*
     cmds:
       - nix flake check
   nix:build:
@@ -46,8 +42,6 @@ tasks:
       - nix fmt
   fmt:
     desc: Run all formatters
-    sources:
-      - ./**/*
     cmds:
       - cargo fmt
       - alejandra .
@@ -55,8 +49,6 @@ tasks:
   test:
     desc: Run all tests
     aliases: [t]
-    sources:
-      - ./**/*.rs
     cmd: cargo nextest run --no-default-features
   audit:
     desc: Run cargo security audit
@@ -67,9 +59,6 @@ tasks:
   build:
     desc: Build the project
     aliases: [b]
-    sources:
-      - ./**/*.rs
-      - ./Cargo*
     cmd: cargo build
   commit:
     desc: Commit changes using custom script
