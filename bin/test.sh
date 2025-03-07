@@ -68,7 +68,7 @@ test_gzip_level() {
   random_file 1000000 file
   echo "Compressing with gzip and cmprss"
   gzip -$1 -c file >gzip_file.gz
-  cmprss gzip --level $1 file cmprss_file.gz
+  cmprss gzip --level $1 file cmprss_file.gz --progress=off
   # Compare the two archives
   # The archives may have slight variations (versioning or whatever) so we
   # only compare the sizes to make sure they are similar
@@ -77,8 +77,8 @@ test_gzip_level() {
   echo "Decompressing"
   gzip -c -d gzip_file.gz >gzip_gzip
   gzip -c -d cmprss_file.gz >cmprss_gzip
-  cmprss gzip --extract cmprss_file.gz cmprss_cmprss
-  cmprss gzip --extract gzip_file.gz gzip_cmprss
+  cmprss gzip --extract cmprss_file.gz cmprss_cmprss --progress=off
+  cmprss gzip --extract gzip_file.gz gzip_cmprss --progress=off
   echo "Comparing the decompressed files"
   compare file gzip_gzip
   compare file gzip_cmprss
