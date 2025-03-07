@@ -38,17 +38,6 @@ impl Compressor for Lz4 {
         "lz4"
     }
 
-    /// Generate a default extracted filename
-    /// lz4 does not support extracting to a directory, so we return a default filename
-    fn default_extracted_filename(&self, in_path: &std::path::Path) -> String {
-        // If the file has no extension, return a default filename
-        if in_path.extension().is_none() {
-            return "archive".to_string();
-        }
-        // Otherwise, return the filename without the extension
-        in_path.file_stem().unwrap().to_str().unwrap().to_string()
-    }
-
     /// Compress an input file or pipe to a lz4 archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
         if let CmprssOutput::Path(out_path) = &output {
@@ -152,36 +141,19 @@ impl Compressor for Lz4 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
+    use crate::test_utils::*;
 
+    /// Test the basic interface of the Lz4 compressor
     #[test]
-    fn roundtrip() -> Result<(), Box<dyn std::error::Error>> {
-        let dir = tempdir()?;
-        let input_path = dir.path().join("input.txt");
-        let compressed_path = dir.path().join("input.txt.lz4");
-        let output_path = dir.path().join("output.txt");
+    fn test_lz4_interface() {
+        let compressor = Lz4::default();
+        test_compressor_interface(&compressor, "lz4", Some("lz4"));
+    }
 
-        // Create a test file
-        let test_data = b"Hello, world! This is a test file for lz4 compression.";
-        std::fs::write(&input_path, test_data)?;
-
-        // Compress the file
-        let lz4 = Lz4::default();
-        lz4.compress(
-            CmprssInput::Path(vec![input_path.clone()]),
-            CmprssOutput::Path(compressed_path.clone()),
-        )?;
-
-        // Extract the file
-        lz4.extract(
-            CmprssInput::Path(vec![compressed_path]),
-            CmprssOutput::Path(output_path.clone()),
-        )?;
-
-        // Verify the contents
-        let output_data = std::fs::read(output_path)?;
-        assert_eq!(test_data.to_vec(), output_data);
-
-        Ok(())
+    /// Test the default compression level
+    #[test]
+    fn test_lz4_default_compression() -> Result<(), io::Error> {
+        let compressor = Lz4::default();
+        test_compression(&compressor)
     }
 }

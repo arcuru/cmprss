@@ -1,6 +1,7 @@
-mod backends;
-mod progress;
-mod utils;
+pub mod backends;
+pub mod progress;
+pub mod test_utils;
+pub mod utils;
 
 use backends::*;
 use clap::{Parser, Subcommand};

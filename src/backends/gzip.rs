@@ -59,15 +59,9 @@ impl Compressor for Gzip {
         "gzip"
     }
 
-    /// Generate a default extracted filename
-    /// gzip does not support extracting to a directory, so we return a default filename
-    fn default_extracted_filename(&self, in_path: &std::path::Path) -> String {
-        // If the file has no extension, return a default filename
-        if in_path.extension().is_none() {
-            return "archive".to_string();
-        }
-        // Otherwise, return the filename without the extension
-        in_path.file_stem().unwrap().to_str().unwrap().to_string()
+    /// Gzip extracts to a file by default
+    fn default_extracted_target(&self) -> ExtractedTarget {
+        ExtractedTarget::FILE
     }
 
     /// Compress an input file or pipe to a gzip archive
@@ -169,34 +163,98 @@ impl Compressor for Gzip {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_fs::prelude::*;
-    use predicates::prelude::*;
+    use crate::test_utils::*;
+    use std::fs;
+    use std::io::{Read, Write};
+    use tempfile::tempdir;
 
+    /// Test the basic interface of the Gzip compressor
     #[test]
-    fn roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_gzip_interface() {
         let compressor = Gzip::default();
+        test_compressor_interface(&compressor, "gzip", Some("gz"));
+    }
 
-        let file = assert_fs::NamedTempFile::new("test.txt")?;
-        file.write_str("garbage data for testing")?;
-        let working_dir = assert_fs::TempDir::new()?;
-        let archive = working_dir.child("archive.".to_owned() + compressor.extension());
-        archive.assert(predicate::path::missing());
+    /// Test the default compression level
+    #[test]
+    fn test_gzip_default_compression() -> Result<(), io::Error> {
+        let compressor = Gzip::default();
+        test_compression(&compressor)
+    }
 
-        // Roundtrip compress/extract
+    /// Test fast compression level
+    #[test]
+    fn test_gzip_fast_compression() -> Result<(), io::Error> {
+        let fast_compressor = Gzip {
+            compression_level: 1,
+            progress_args: ProgressArgs::default(),
+        };
+        test_compression(&fast_compressor)
+    }
+
+    /// Test best compression level
+    #[test]
+    fn test_gzip_best_compression() -> Result<(), io::Error> {
+        let best_compressor = Gzip {
+            compression_level: 9,
+            progress_args: ProgressArgs::default(),
+        };
+        test_compression(&best_compressor)
+    }
+
+    /// Test for gzip-specific behavior: handling of concatenated gzip archives
+    #[test]
+    fn test_concatenated_gzip() -> Result<(), io::Error> {
+        let compressor = Gzip::default();
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+
+        // Create two test files
+        let input_path1 = temp_dir.path().join("input1.txt");
+        let input_path2 = temp_dir.path().join("input2.txt");
+        let test_data1 = "This is the first file";
+        let test_data2 = "This is the second file";
+        fs::write(&input_path1, test_data1)?;
+        fs::write(&input_path2, test_data2)?;
+
+        // Compress each file separately
+        let archive_path1 = temp_dir.path().join("archive1.gz");
+        let archive_path2 = temp_dir.path().join("archive2.gz");
+
         compressor.compress(
-            CmprssInput::Path(vec![file.path().to_path_buf()]),
-            CmprssOutput::Path(archive.path().to_path_buf()),
-        )?;
-        archive.assert(predicate::path::is_file());
-        compressor.extract(
-            CmprssInput::Path(vec![archive.path().to_path_buf()]),
-            CmprssOutput::Path(working_dir.child("test.txt").path().to_path_buf()),
+            CmprssInput::Path(vec![input_path1.clone()]),
+            CmprssOutput::Path(archive_path1.clone()),
         )?;
 
-        // Assert the files are identical
-        working_dir
-            .child("test.txt")
-            .assert(predicate::path::eq_file(file.path()));
+        compressor.compress(
+            CmprssInput::Path(vec![input_path2.clone()]),
+            CmprssOutput::Path(archive_path2.clone()),
+        )?;
+
+        // Create a concatenated archive
+        let concat_archive = temp_dir.path().join("concat.gz");
+        let mut concat_file = fs::File::create(&concat_archive)?;
+
+        // Concat the two gzip files
+        let mut archive1_data = Vec::new();
+        let mut archive2_data = Vec::new();
+        fs::File::open(&archive_path1)?.read_to_end(&mut archive1_data)?;
+        fs::File::open(&archive_path2)?.read_to_end(&mut archive2_data)?;
+
+        concat_file.write_all(&archive1_data)?;
+        concat_file.write_all(&archive2_data)?;
+        concat_file.flush()?;
+
+        // Extract the concatenated archive - this should yield the first file's contents
+        let output_path = temp_dir.path().join("output.txt");
+
+        compressor.extract(
+            CmprssInput::Path(vec![concat_archive]),
+            CmprssOutput::Path(output_path.clone()),
+        )?;
+
+        // Verify the result is the first file's content
+        let output_data = fs::read_to_string(output_path)?;
+        assert_eq!(output_data, test_data1);
 
         Ok(())
     }

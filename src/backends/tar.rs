@@ -3,7 +3,6 @@ extern crate tar;
 use clap::Args;
 use std::fs::File;
 use std::io::{self, Seek, SeekFrom, Write};
-use std::path::Path;
 use tar::{Archive, Builder};
 use tempfile::tempfile;
 
@@ -30,9 +29,9 @@ impl Compressor for Tar {
         "tar"
     }
 
-    /// Tar extraction needs to specify the directory, so use the current directory
-    fn default_extracted_filename(&self, _in_path: &Path) -> String {
-        ".".to_string()
+    /// Tar extracts to a directory by default
+    fn default_extracted_target(&self) -> ExtractedTarget {
+        ExtractedTarget::DIRECTORY
     }
 
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
@@ -133,41 +132,28 @@ impl Tar {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::*;
     use assert_fs::prelude::*;
     use predicates::prelude::*;
     use std::path::PathBuf;
 
+    /// Test the basic interface of the Tar compressor
     #[test]
-    fn roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_tar_interface() {
         let compressor = Tar::default();
-
-        let file = assert_fs::NamedTempFile::new("test.txt")?;
-        file.write_str("garbage data for testing")?;
-        let working_dir = assert_fs::TempDir::new()?;
-        let archive = working_dir.child("archive.".to_owned() + compressor.extension());
-        archive.assert(predicate::path::missing());
-
-        // Roundtrip compress/extract
-        compressor.compress(
-            CmprssInput::Path(vec![file.path().to_path_buf()]),
-            CmprssOutput::Path(archive.path().to_path_buf()),
-        )?;
-        archive.assert(predicate::path::is_file());
-        compressor.extract(
-            CmprssInput::Path(vec![archive.path().to_path_buf()]),
-            CmprssOutput::Path(working_dir.path().to_path_buf()),
-        )?;
-
-        // Assert the files are identical
-        working_dir
-            .child("test.txt")
-            .assert(predicate::path::eq_file(file.path()));
-
-        Ok(())
+        test_compressor_interface(&compressor, "tar", Some("tar"));
     }
 
+    /// Test the default compression level
     #[test]
-    fn roundtrip_directory() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_tar_default_compression() -> Result<(), io::Error> {
+        let compressor = Tar::default();
+        test_compression(&compressor)
+    }
+
+    /// Test tar-specific functionality: directory handling
+    #[test]
+    fn test_directory_handling() -> Result<(), Box<dyn std::error::Error>> {
         let compressor = Tar::default();
         let dir = assert_fs::TempDir::new()?;
         let file_path = dir.child("file.txt");

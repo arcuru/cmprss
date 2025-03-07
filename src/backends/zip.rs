@@ -64,12 +64,9 @@ impl Compressor for Zip {
         "zip"
     }
 
-    fn default_extracted_filename(&self, in_path: &Path) -> String {
-        if let Some(stem) = in_path.file_stem() {
-            stem.to_string_lossy().into_owned()
-        } else {
-            ".".to_string()
-        }
+    /// Zip extracts to a directory by default
+    fn default_extracted_target(&self) -> ExtractedTarget {
+        ExtractedTarget::DIRECTORY
     }
 
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
@@ -172,39 +169,28 @@ fn add_directory<W: Write + Seek>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::*;
     use assert_fs::prelude::*;
     use predicates::prelude::*;
     use std::path::PathBuf;
 
+    /// Test the basic interface of the Zip compressor
     #[test]
-    fn roundtrip_file() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_zip_interface() {
         let compressor = Zip::default();
-        let file = assert_fs::NamedTempFile::new("test.txt")?;
-        file.write_str("test data for zip")?;
-        let working_dir = assert_fs::TempDir::new()?;
-        let archive = working_dir.child("archive.zip");
-        archive.assert(predicate::path::missing());
-
-        compressor.compress(
-            CmprssInput::Path(vec![file.path().to_path_buf()]),
-            CmprssOutput::Path(archive.path().to_path_buf()),
-        )?;
-        archive.assert(predicate::path::is_file());
-
-        let extract_dir = working_dir.child("out");
-        std::fs::create_dir_all(extract_dir.path())?;
-        compressor.extract(
-            CmprssInput::Path(vec![archive.path().to_path_buf()]),
-            CmprssOutput::Path(extract_dir.path().to_path_buf()),
-        )?;
-        extract_dir
-            .child("test.txt")
-            .assert(predicate::path::eq_file(file.path()));
-        Ok(())
+        test_compressor_interface(&compressor, "zip", Some("zip"));
     }
 
+    /// Test the default compression level
     #[test]
-    fn roundtrip_directory() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_zip_default_compression() -> Result<(), io::Error> {
+        let compressor = Zip::default();
+        test_compression(&compressor)
+    }
+
+    /// Test zip-specific functionality: directory handling
+    #[test]
+    fn test_directory_handling() -> Result<(), Box<dyn std::error::Error>> {
         let compressor = Zip::default();
         let dir = assert_fs::TempDir::new()?;
         let file_path = dir.child("file.txt");

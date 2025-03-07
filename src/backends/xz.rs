@@ -136,35 +136,39 @@ impl Compressor for Xz {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_fs::prelude::*;
-    use predicates::prelude::*;
+    use crate::test_utils::*;
 
+    /// Test the basic interface of the Xz compressor
     #[test]
-    fn roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_xz_interface() {
         let compressor = Xz::default();
+        test_compressor_interface(&compressor, "xz", Some("xz"));
+    }
 
-        let file = assert_fs::NamedTempFile::new("test.txt")?;
-        file.write_str("garbage data for testing")?;
-        let working_dir = assert_fs::TempDir::new()?;
-        let archive = working_dir.child("archive.".to_owned() + compressor.extension());
-        archive.assert(predicate::path::missing());
+    /// Test the default compression level
+    #[test]
+    fn test_xz_default_compression() -> Result<(), io::Error> {
+        let compressor = Xz::default();
+        test_compression(&compressor)
+    }
 
-        // Roundtrip compress/extract
-        compressor.compress(
-            CmprssInput::Path(vec![file.path().to_path_buf()]),
-            CmprssOutput::Path(archive.path().to_path_buf()),
-        )?;
-        archive.assert(predicate::path::is_file());
-        compressor.extract(
-            CmprssInput::Path(vec![archive.path().to_path_buf()]),
-            CmprssOutput::Path(working_dir.child("test.txt").path().to_path_buf()),
-        )?;
+    /// Test fast compression level
+    #[test]
+    fn test_xz_fast_compression() -> Result<(), io::Error> {
+        let fast_compressor = Xz {
+            level: 1,
+            progress_args: ProgressArgs::default(),
+        };
+        test_compression(&fast_compressor)
+    }
 
-        // Assert the files are identical
-        working_dir
-            .child("test.txt")
-            .assert(predicate::path::eq_file(file.path()));
-
-        Ok(())
+    /// Test best compression level
+    #[test]
+    fn test_xz_best_compression() -> Result<(), io::Error> {
+        let best_compressor = Xz {
+            level: 9,
+            progress_args: ProgressArgs::default(),
+        };
+        test_compression(&best_compressor)
     }
 }

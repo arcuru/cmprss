@@ -2,7 +2,7 @@ use crate::{
     progress::{copy_with_progress, ProgressArgs},
     utils::{
         cmprss_error, CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
-        LevelArgs,
+        ExtractedTarget, LevelArgs,
     },
 };
 use bzip2::write::{BzDecoder, BzEncoder};
@@ -77,14 +77,19 @@ impl Bzip2 {
 }
 
 impl Compressor for Bzip2 {
-    /// The standard extension for the bz2 format.
+    /// Default extension for bzip2 files
     fn extension(&self) -> &str {
         "bz2"
     }
 
-    /// Full name for bz2.
+    /// Name of this compressor
     fn name(&self) -> &str {
         "bzip2"
+    }
+
+    /// Bzip2 extracts to a file by default
+    fn default_extracted_target(&self) -> ExtractedTarget {
+        ExtractedTarget::FILE
     }
 
     /// Compress an input file or pipe to a bz2 archive
@@ -163,97 +168,53 @@ impl Compressor for Bzip2 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_fs::prelude::*;
-    use predicates::prelude::*;
+    use crate::test_utils::*;
+
+    /// Test the basic interface of the Bzip2 compressor
+    #[test]
+    fn test_bzip2_interface() {
+        let compressor = Bzip2::default();
+        test_compressor_interface(&compressor, "bzip2", Some("bz2"));
+    }
 
     #[test]
     fn test_bzip2_compression_validator() {
         let validator = Bzip2CompressionValidator;
-
-        // Test range
-        assert_eq!(validator.min_level(), 1);
-        assert_eq!(validator.max_level(), 9);
-        assert_eq!(validator.default_level(), 9);
-
-        // Test validation
-        assert!(validator.is_valid_level(1));
-        assert!(validator.is_valid_level(5));
-        assert!(validator.is_valid_level(9));
-        assert!(!validator.is_valid_level(0));
-        assert!(!validator.is_valid_level(10));
-
-        // Test clamping
-        assert_eq!(validator.validate_and_clamp_level(0), 1);
-        assert_eq!(validator.validate_and_clamp_level(5), 5);
-        assert_eq!(validator.validate_and_clamp_level(10), 9);
-
-        // Test special names
-        assert_eq!(validator.name_to_level("fast"), Some(1));
-        assert_eq!(validator.name_to_level("best"), Some(9));
-        assert_eq!(validator.name_to_level("none"), None);
-        assert_eq!(validator.name_to_level("invalid"), None);
+        test_compression_validator_helper(
+            &validator,
+            1,       // min_level
+            9,       // max_level
+            9,       // default_level
+            Some(1), // fast_name_level
+            Some(9), // best_name_level
+            None,    // none_name_level
+        );
     }
 
+    /// Test the default compression level
     #[test]
-    fn roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_bzip2_default_compression() -> Result<(), io::Error> {
         let compressor = Bzip2::default();
-
-        let file = assert_fs::NamedTempFile::new("test.txt")?;
-        file.write_str("garbage data for testing")?;
-        let working_dir = assert_fs::TempDir::new()?;
-        let archive = working_dir.child("archive.".to_owned() + compressor.extension());
-        archive.assert(predicate::path::missing());
-
-        // Roundtrip compress/extract
-        compressor.compress(
-            CmprssInput::Path(vec![file.path().to_path_buf()]),
-            CmprssOutput::Path(archive.path().to_path_buf()),
-        )?;
-        archive.assert(predicate::path::is_file());
-        compressor.extract(
-            CmprssInput::Path(vec![archive.path().to_path_buf()]),
-            CmprssOutput::Path(working_dir.child("test.txt").path().to_path_buf()),
-        )?;
-
-        // Assert the files are identical
-        working_dir
-            .child("test.txt")
-            .assert(predicate::path::eq_file(file.path()));
-
-        Ok(())
+        test_compression(&compressor)
     }
 
-    // Fail with a compression level of 0
+    /// Test fast compression level
     #[test]
-    fn invalid_compression_level_0() {
-        let compressor = Bzip2 {
-            level: 0,
-            ..Bzip2::default()
+    fn test_bzip2_fast_compression() -> Result<(), io::Error> {
+        let fast_compressor = Bzip2 {
+            level: 1,
+            progress_args: ProgressArgs::default(),
         };
-        let file = assert_fs::NamedTempFile::new("test.txt").unwrap();
-        let working_dir = assert_fs::TempDir::new().unwrap();
-        let archive = working_dir.child("archive.".to_owned() + compressor.extension());
-        let result = compressor.compress(
-            CmprssInput::Path(vec![file.path().to_path_buf()]),
-            CmprssOutput::Path(archive.path().to_path_buf()),
-        );
-        assert!(result.is_err());
+        test_compression(&fast_compressor)
     }
 
-    // Fail with a compression level of 10
+    /// Test best compression level
     #[test]
-    fn invalid_compression_level_10() {
-        let compressor = Bzip2 {
-            level: 10,
-            ..Bzip2::default()
+    fn test_bzip2_best_compression() -> Result<(), io::Error> {
+        let best_compressor = Bzip2 {
+            level: 9,
+            progress_args: ProgressArgs::default(),
         };
-        let file = assert_fs::NamedTempFile::new("test.txt").unwrap();
-        let working_dir = assert_fs::TempDir::new().unwrap();
-        let archive = working_dir.child("archive.".to_owned() + compressor.extension());
-        let result = compressor.compress(
-            CmprssInput::Path(vec![file.path().to_path_buf()]),
-            CmprssOutput::Path(archive.path().to_path_buf()),
-        );
-        assert!(result.is_err());
+        test_compression(&best_compressor)
     }
 }

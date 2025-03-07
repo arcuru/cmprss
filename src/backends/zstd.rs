@@ -86,17 +86,6 @@ impl Compressor for Zstd {
         "zstd"
     }
 
-    /// Generate a default extracted filename
-    /// zstd does not support extracting to a directory, so we return a default filename
-    fn default_extracted_filename(&self, in_path: &std::path::Path) -> String {
-        // If the file has no extension, return a default filename
-        if in_path.extension().is_none() {
-            return "archive".to_string();
-        }
-        // Otherwise, return the filename without the extension
-        in_path.file_stem().unwrap().to_str().unwrap().to_string()
-    }
-
     /// Compress an input file or pipe to a zstd archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
         if let CmprssOutput::Path(out_path) = &output {
@@ -200,64 +189,53 @@ impl Compressor for Zstd {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
+    use crate::test_utils::*;
 
+    /// Test the basic interface of the Zstd compressor
     #[test]
-    fn roundtrip() -> Result<(), Box<dyn std::error::Error>> {
-        let dir = tempdir()?;
-        let input_path = dir.path().join("input.txt");
-        let compressed_path = dir.path().join("input.txt.zst");
-        let output_path = dir.path().join("output.txt");
+    fn test_zstd_interface() {
+        let compressor = Zstd::default();
+        test_compressor_interface(&compressor, "zstd", Some("zst"));
+    }
 
-        // Create a test file
-        let test_data = b"Hello, world! This is a test file for zstd compression.";
-        std::fs::write(&input_path, test_data)?;
+    /// Test the default compression level
+    #[test]
+    fn test_zstd_default_compression() -> Result<(), io::Error> {
+        let compressor = Zstd::default();
+        test_compression(&compressor)
+    }
 
-        // Compress the file
-        let zstd = Zstd::default();
-        zstd.compress(
-            CmprssInput::Path(vec![input_path.clone()]),
-            CmprssOutput::Path(compressed_path.clone()),
-        )?;
+    /// Test fast compression level
+    #[test]
+    fn test_zstd_fast_compression() -> Result<(), io::Error> {
+        let fast_compressor = Zstd {
+            compression_level: 1,
+            progress_args: ProgressArgs::default(),
+        };
+        test_compression(&fast_compressor)
+    }
 
-        // Extract the file
-        zstd.extract(
-            CmprssInput::Path(vec![compressed_path]),
-            CmprssOutput::Path(output_path.clone()),
-        )?;
-
-        // Verify the contents
-        let output_data = std::fs::read(output_path)?;
-        assert_eq!(test_data.to_vec(), output_data);
-
-        Ok(())
+    /// Test best compression level
+    #[test]
+    fn test_zstd_best_compression() -> Result<(), io::Error> {
+        let best_compressor = Zstd {
+            compression_level: 22,
+            progress_args: ProgressArgs::default(),
+        };
+        test_compression(&best_compressor)
     }
 
     #[test]
     fn test_zstd_compression_validator() {
         let validator = ZstdCompressionValidator;
-
-        // Test range
-        assert_eq!(validator.min_level(), -7);
-        assert_eq!(validator.max_level(), 22);
-        assert_eq!(validator.default_level(), 1);
-
-        // Test validation
-        assert!(validator.is_valid_level(-7));
-        assert!(validator.is_valid_level(0));
-        assert!(validator.is_valid_level(22));
-        assert!(!validator.is_valid_level(-8));
-        assert!(!validator.is_valid_level(23));
-
-        // Test clamping
-        assert_eq!(validator.validate_and_clamp_level(-8), -7);
-        assert_eq!(validator.validate_and_clamp_level(0), 0);
-        assert_eq!(validator.validate_and_clamp_level(23), 22);
-
-        // Test special names
-        assert_eq!(validator.name_to_level("none"), Some(-7));
-        assert_eq!(validator.name_to_level("fast"), Some(1));
-        assert_eq!(validator.name_to_level("best"), Some(22));
-        assert_eq!(validator.name_to_level("invalid"), None);
+        test_compression_validator_helper(
+            &validator,
+            -7,       // min_level
+            22,       // max_level
+            1,        // default_level
+            Some(1),  // fast_name_level
+            Some(22), // best_name_level
+            Some(-7), // none_name_level
+        );
     }
 }
