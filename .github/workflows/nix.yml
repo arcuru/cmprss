@@ -37,7 +37,7 @@ jobs:
 
       - name: Build cmprss
         run: nix build .#cmprss
-      
+
         # Run any nix checks that aren't covered by the above
         # This should evaluate the nix expression and then do nothing
       - name: Forgotten checks
