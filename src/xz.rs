@@ -1,5 +1,5 @@
 use crate::{
-    progress::{progress_bar, ProgressArgs},
+    progress::{copy_with_progress, ProgressArgs},
     utils::*,
 };
 use clap::Args;
@@ -76,25 +76,17 @@ impl Compressor for Xz {
             CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
         };
         let mut encoder = XzEncoder::new(output_stream, self.level);
-        let mut bar = progress_bar(file_size, self.progress_args.progress, &output);
-        if let Some(progress) = &mut bar {
-            // Copy the input to the output in chunks so that we can update the progress bar
-            let mut buffer = vec![0; self.progress_args.chunk_size.size_in_bytes];
-            loop {
-                let bytes_read = input_stream.read(&mut buffer)?;
-                if bytes_read == 0 {
-                    break;
-                }
-                encoder.write_all(&buffer[..bytes_read])?;
-                progress.update_input(encoder.total_in());
-                progress.update_output(encoder.total_out());
-            }
-            encoder.flush()?;
-            progress.update_output(encoder.total_out());
-            progress.finish();
-        } else {
-            io::copy(&mut input_stream, &mut encoder)?;
-        }
+
+        // Use the custom output function to handle progress bar updates
+        copy_with_progress(
+            &mut input_stream,
+            &mut encoder,
+            self.progress_args.chunk_size.size_in_bytes,
+            file_size,
+            self.progress_args.progress,
+            &output,
+        )?;
+
         Ok(())
     }
 
@@ -119,25 +111,17 @@ impl Compressor for Xz {
             CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
         };
         let mut decoder = XzDecoder::new(output_stream);
-        let mut bar = progress_bar(file_size, self.progress_args.progress, &output);
-        if let Some(progress) = &mut bar {
-            // Copy the input to the output in chunks so that we can update the progress bar
-            let mut buffer = vec![0; self.progress_args.chunk_size.size_in_bytes];
-            loop {
-                let bytes_read = input_stream.read(&mut buffer)?;
-                if bytes_read == 0 {
-                    break;
-                }
-                decoder.write_all(&buffer[..bytes_read])?;
-                progress.update_input(decoder.total_in());
-                progress.update_output(decoder.total_out());
-            }
-            decoder.flush()?;
-            progress.update_output(decoder.total_out());
-            progress.finish();
-        } else {
-            io::copy(&mut input_stream, &mut decoder)?;
-        }
+
+        // Use the custom output function to handle progress bar updates
+        copy_with_progress(
+            &mut input_stream,
+            &mut decoder,
+            self.progress_args.chunk_size.size_in_bytes,
+            file_size,
+            self.progress_args.progress,
+            &output,
+        )?;
+
         Ok(())
     }
 }

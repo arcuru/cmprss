@@ -1,7 +1,10 @@
 use crate::utils::CmprssOutput;
 use clap::Args;
 use indicatif::{HumanBytes, ProgressBar};
+use std::io::{self, Read, Write};
 use std::str::FromStr;
+use std::time::Duration;
+use std::time::Instant;
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug, Default)]
 pub enum ProgressDisplay {
@@ -70,66 +73,190 @@ pub struct ProgressArgs {
     pub chunk_size: ChunkSize,
 }
 
-/// Progress bar for the compress process
-pub struct Progress {
-    /// The progress bar
-    bar: ProgressBar,
-    /// The number of bytes read from the input
-    input_read: u64,
-    /// The number of bytes written to the output
-    output_written: u64,
-}
-
-/// Create a progress bar if necessary
-pub fn progress_bar(
+/// Create a progress bar if necessary based on settings
+pub fn create_progress_bar(
     input_size: Option<u64>,
     progress: ProgressDisplay,
     output: &CmprssOutput,
-) -> Option<Progress> {
+) -> Option<ProgressBar> {
     match (progress, output) {
         (ProgressDisplay::Auto, CmprssOutput::Pipe(_)) => None,
         (ProgressDisplay::Off, _) => None,
-        (_, _) => Some(Progress::new(input_size)),
+        (_, _) => {
+            let bar = match input_size {
+                Some(size) => ProgressBar::new(size),
+                None => ProgressBar::new_spinner(),
+            };
+            bar.set_style(
+                indicatif::ProgressStyle::default_bar()
+                    .template("{spinner:.green} [{elapsed_precise}] ({eta}) [{bar:40.cyan/blue}] {bytes}/{total_bytes} => {msg}").unwrap()
+                    .progress_chars("#>-"),
+            );
+            bar.enable_steady_tick(Duration::from_millis(100));
+            Some(bar)
+        }
     }
 }
 
-impl Progress {
-    /// Create a new progress bar
-    /// Draws to stderr by default
-    pub fn new(input_size: Option<u64>) -> Self {
-        let bar = match input_size {
-            Some(size) => ProgressBar::new(size),
-            None => ProgressBar::new_spinner(),
-        };
-        bar.set_style(
-            indicatif::ProgressStyle::default_bar()
-                .template("{spinner:.green} [{elapsed_precise}] ({eta}) [{bar:40.cyan/blue}] {bytes}/{total_bytes} => {msg}").unwrap()
-                .progress_chars("#>-"),
-        );
-        Progress {
+/// A reader that tracks progress of bytes read
+pub struct ProgressReader<R> {
+    inner: R,
+    bar: Option<ProgressBar>,
+    total_read: u64,
+    last_update: Instant,
+    bytes_since_update: u64,
+    bytes_per_update: u64,
+}
+
+impl<R: Read> ProgressReader<R> {
+    pub fn new(inner: R, bar: Option<ProgressBar>) -> Self {
+        ProgressReader {
+            inner,
             bar,
-            input_read: 0,
-            output_written: 0,
+            total_read: 0,
+            last_update: Instant::now(),
+            bytes_since_update: 0,
+            bytes_per_update: 8192, // Start with 8KB, will adjust dynamically
         }
     }
 
-    /// Update the progress bar with the number of bytes read from the input
-    pub fn update_input(&mut self, bytes_read: u64) {
-        self.input_read = bytes_read;
-        self.bar.set_position(self.input_read);
+    /// Updates the progress bar if enough bytes have been read since the last update.
+    /// Dynamically adjusts the update frequency to target ~100ms between updates by
+    /// tracking the elapsed time and adjusting bytes_per_update accordingly.
+    fn maybe_update_progress(&mut self, bytes_read: u64) {
+        if let Some(ref bar) = self.bar {
+            self.bytes_since_update += bytes_read;
+
+            if self.bytes_since_update >= self.bytes_per_update {
+                let now = Instant::now();
+                let elapsed = now.duration_since(self.last_update);
+
+                // Update the progress
+                bar.set_position(self.total_read);
+
+                // Adjust bytes_per_update to target ~100ms between updates
+                if elapsed < Duration::from_millis(50) {
+                    self.bytes_per_update *= 2;
+                } else if elapsed > Duration::from_millis(150) {
+                    self.bytes_per_update = (self.bytes_per_update / 2).max(1024);
+                }
+
+                self.last_update = now;
+                self.bytes_since_update = 0;
+            }
+        }
+    }
+}
+
+impl<R: Read> Read for ProgressReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let bytes_read = self.inner.read(buf)?;
+        if bytes_read > 0 {
+            self.total_read += bytes_read as u64;
+            self.maybe_update_progress(bytes_read as u64);
+        }
+        Ok(bytes_read)
+    }
+}
+
+/// A writer that tracks progress of bytes written
+pub struct ProgressWriter<W> {
+    inner: W,
+    bar: Option<ProgressBar>,
+    total_written: u64,
+    last_update: Instant,
+    bytes_since_update: u64,
+    bytes_per_update: u64,
+}
+
+impl<W: Write> ProgressWriter<W> {
+    pub fn new(inner: W, bar: Option<ProgressBar>) -> Self {
+        ProgressWriter {
+            inner,
+            bar,
+            total_written: 0,
+            last_update: Instant::now(),
+            bytes_since_update: 0,
+            bytes_per_update: 8192, // Start with 8KB, will adjust dynamically
+        }
     }
 
-    /// Update the progress bar with the number of bytes written to the output
-    pub fn update_output(&mut self, bytes_written: u64) {
-        self.output_written = bytes_written;
-        self.bar
-            .set_message(HumanBytes(self.output_written).to_string());
+    pub fn finish(self) {
+        if let Some(bar) = self.bar {
+            bar.finish();
+        }
     }
 
-    /// Finish the progress bar
-    pub fn finish(&self) {
-        self.bar.finish();
+    /// Updates the progress bar if enough bytes have been written since the last update.
+    /// Dynamically adjusts the update frequency to target ~100ms between updates by
+    /// tracking the elapsed time and adjusting bytes_per_update accordingly.
+    fn maybe_update_progress(&mut self, bytes_written: u64) {
+        if let Some(ref bar) = self.bar {
+            self.bytes_since_update += bytes_written;
+
+            if self.bytes_since_update >= self.bytes_per_update {
+                let now = Instant::now();
+                let elapsed = now.duration_since(self.last_update);
+
+                // Update the progress
+                bar.set_message(HumanBytes(self.total_written).to_string());
+
+                // Adjust bytes_per_update to target ~100ms between updates
+                if elapsed < Duration::from_millis(50) {
+                    self.bytes_per_update *= 2;
+                } else if elapsed > Duration::from_millis(150) {
+                    self.bytes_per_update = (self.bytes_per_update / 2).max(1024);
+                }
+
+                self.last_update = now;
+                self.bytes_since_update = 0;
+            }
+        }
     }
+}
+
+impl<W: Write> Write for ProgressWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let bytes_written = self.inner.write(buf)?;
+        if bytes_written > 0 {
+            self.total_written += bytes_written as u64;
+            self.maybe_update_progress(bytes_written as u64);
+        }
+        Ok(bytes_written)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+/// Process data with progress bar updates
+pub fn copy_with_progress<R: Read, W: Write>(
+    reader: R,
+    writer: W,
+    chunk_size: usize,
+    input_size: Option<u64>,
+    progress_display: ProgressDisplay,
+    output: &CmprssOutput,
+) -> io::Result<()> {
+    // Create the progress bar if needed
+    let progress_bar = create_progress_bar(input_size, progress_display, output);
+
+    // Create reader and writer with progress tracking
+    let mut reader = ProgressReader::new(reader, progress_bar.clone());
+    let mut writer = ProgressWriter::new(writer, progress_bar);
+
+    let mut buffer = vec![0; chunk_size];
+    loop {
+        let bytes_read = reader.read(&mut buffer)?;
+        if bytes_read == 0 {
+            break;
+        }
+        writer.write_all(&buffer[..bytes_read])?;
+    }
+    writer.flush()?;
+    writer.finish();
+    Ok(())
 }
 
 #[cfg(test)]

@@ -1,9 +1,10 @@
+use crate::progress::{copy_with_progress, ProgressArgs};
 use crate::utils::*;
 use clap::Args;
 use flate2::write::GzEncoder;
 use flate2::{read::GzDecoder, Compression};
 use std::fs::File;
-use std::io::{self, Read, Write};
+use std::io::{self, BufReader, BufWriter, Read, Write};
 
 #[derive(Args, Debug)]
 pub struct GzipArgs {
@@ -12,16 +13,21 @@ pub struct GzipArgs {
 
     #[clap(flatten)]
     pub level_args: LevelArgs,
+
+    #[clap(flatten)]
+    pub progress_args: ProgressArgs,
 }
 
 pub struct Gzip {
     pub compression_level: u32,
+    pub progress_args: ProgressArgs,
 }
 
 impl Default for Gzip {
     fn default() -> Self {
         Gzip {
             compression_level: 6,
+            progress_args: ProgressArgs::default(),
         }
     }
 }
@@ -30,6 +36,7 @@ impl Gzip {
     pub fn new(args: &GzipArgs) -> Gzip {
         Gzip {
             compression_level: args.level_args.level.level,
+            progress_args: args.progress_args,
         }
     }
 }
@@ -72,44 +79,78 @@ impl Compressor for Gzip {
                 }
             }
         }
-        let mut input_stream = match input {
+        let mut file_size = None;
+        let mut input_stream: Box<dyn Read + Send> = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() > 1 {
-                    return cmprss_error("only 1 file can be compressed at a time");
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Multiple input files not supported for gzip",
+                    ));
                 }
-                Box::new(File::open(paths[0].as_path())?)
+                let path = &paths[0];
+                file_size = Some(std::fs::metadata(path)?.len());
+                Box::new(BufReader::new(File::open(path)?))
             }
-            CmprssInput::Pipe(pipe) => Box::new(pipe) as Box<dyn Read + Send>,
+            CmprssInput::Pipe(stdin) => Box::new(BufReader::new(stdin)),
         };
-        let output_stream = match output {
-            CmprssOutput::Path(path) => Box::new(File::create(path)?),
-            CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
+
+        let output_stream: Box<dyn Write + Send> = match &output {
+            CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
+            CmprssOutput::Pipe(stdout) => Box::new(BufWriter::new(stdout)),
         };
 
         let mut encoder = GzEncoder::new(output_stream, Compression::new(self.compression_level));
-        std::io::copy(&mut input_stream, &mut encoder)?;
+
+        // Use the custom output function to handle progress bar updates with CountingWriter
+        copy_with_progress(
+            &mut input_stream,
+            &mut encoder,
+            self.progress_args.chunk_size.size_in_bytes,
+            file_size,
+            self.progress_args.progress,
+            &output,
+        )?;
+
         encoder.finish()?;
         Ok(())
     }
 
     /// Extract a gzip archive
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
-        let input_stream = match input {
+        let mut file_size = None;
+        let input_stream: Box<dyn Read + Send> = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() > 1 {
-                    return cmprss_error("only 1 file can be extracted at a time");
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Multiple input files not supported for gzip extraction",
+                    ));
                 }
-                Box::new(File::open(paths[0].as_path())?)
+                let path = &paths[0];
+                file_size = Some(std::fs::metadata(path)?.len());
+                Box::new(BufReader::new(File::open(path)?))
             }
-            CmprssInput::Pipe(pipe) => Box::new(pipe) as Box<dyn Read + Send>,
+            CmprssInput::Pipe(stdin) => Box::new(BufReader::new(stdin)),
         };
-        let mut output_stream = match output {
-            CmprssOutput::Path(path) => Box::new(File::create(path)?),
-            CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
+
+        let mut output_stream: Box<dyn Write + Send> = match &output {
+            CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
+            CmprssOutput::Pipe(stdout) => Box::new(BufWriter::new(stdout)),
         };
 
         let mut decoder = GzDecoder::new(input_stream);
-        std::io::copy(&mut decoder, &mut output_stream)?;
+
+        // Use the utility function to handle progress bar updates
+        copy_with_progress(
+            &mut decoder,
+            &mut output_stream,
+            self.progress_args.chunk_size.size_in_bytes,
+            file_size,
+            self.progress_args.progress,
+            &output,
+        )?;
+
         Ok(())
     }
 }
