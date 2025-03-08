@@ -2,7 +2,8 @@
 
 # These are the helper commands used for managing/testing the repo.
 
-version: "3"
+# 3.17 is required to use aliases in the Taskfile.
+version: "3.17"
 
 vars:
   BIN: "{{.ROOT_DIR}}/bin"
@@ -17,39 +18,19 @@ tasks:
   ci:
     desc: Run CI locally
     aliases: [ci:local]
-    deps: [audit, fmt, test, clippy, build]
-  nix:ci:
-    desc: Run CI locally under nix
-    aliases: [ci:local]
-    deps: [nix:check, nix:fmt, nix:build]
-  nix:check:
-    desc: Run Nix CI checks
-    cmds:
-      - nix flake check
-  nix:build:
-    desc: Build with Nix
-    cmds:
-      - nix build
+    deps: [audit, fmt, test, clippy, build, build:release]
   clippy:
     desc: Run clippy
-    cmd: cargo clippy
+    cmd: cargo clippy --all-targets --all-features -- -D warnings
   clippy:fix:
     desc: Run clippy and fix errors
-    cmd: cargo clippy --fix --allow-dirty --allow-staged
-  nix:fmt:
-    desc: Run all formatters using treefmt
-    cmds:
-      - nix fmt
+    cmd: cargo clippy --fix --allow-dirty --allow-staged --all-targets --all-features
   fmt:
     desc: Run all formatters
     cmds:
       - cargo fmt
       - alejandra .
       - prettier --write .
-  test:
-    desc: Run all tests
-    aliases: [t]
-    cmd: cargo nextest run --no-default-features
   audit:
     desc: Run cargo security audit
     sources:
@@ -60,9 +41,17 @@ tasks:
     desc: Build the project
     aliases: [b]
     cmd: cargo build
+  build:release:
+    desc: Build the project in release mode
+    aliases: [b:release]
+    cmd: cargo build --release
   commit:
     desc: Commit changes using custom script
     cmd: "{{.BIN}}/commit.sh"
+  test:
+    desc: Run all tests
+    aliases: [t]
+    cmd: cargo nextest run --no-default-features
   test:full:
     desc: Run comparisons against official tools
     cmd: "{{.BIN}}/test.sh {{.CLI_ARGS}}"
@@ -73,5 +62,16 @@ tasks:
     cmd: cargo tarpaulin --skip-clean --include-tests --output-dir coverage --out lcov --no-default-features
   nix:coverage:
     desc: Create coverage using nix
-    cmds:
-      - nix build .#coverage --out-link coverage
+    cmd: nix build .#coverage --out-link coverage
+  nix:ci:
+    desc: Run CI locally under nix
+    deps: [nix:check, nix:fmt, nix:build]
+  nix:check:
+    desc: Run Nix CI checks
+    cmd: nix flake check
+  nix:build:
+    desc: Build with Nix
+    cmd: nix build
+  nix:fmt:
+    desc: Run all formatters using treefmt
+    cmd: nix fmt
