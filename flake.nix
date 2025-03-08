@@ -135,7 +135,9 @@
             prettier.enable = true;
             rustfmt = {
               enable = true;
-              package = toolChain;
+              package = pkgs.writeShellScriptBin "rustfmt" ''
+                exec ${fenixStable.rustfmt}/bin/rustfmt "$@"
+              '';
             };
           };
         };
