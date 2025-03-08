@@ -6,7 +6,6 @@
 
     crane = {
       url = "github:ipetkov/crane";
-      inputs.nixpkgs.follows = "nixpkgs";
     };
 
     fenix = {
@@ -130,7 +129,7 @@
 
         # This also sets up `nix fmt` to run all formatters
         treefmt = {
-          projectRootFile = ./flake.nix;
+          projectRootFile = "./flake.nix";
           programs = {
             alejandra.enable = true;
             prettier.enable = true;
