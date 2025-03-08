@@ -11,7 +11,7 @@ homepage = "https://github.com/arcuru/cmprss"
 categories = ["command-line-utilities", "compression"]
 
 [dependencies]
-bzip2 = "0.4"
+bzip2 = "0.5"
 clap = { version = "4", features = ["derive"] }
 flate2 = "1"
 indicatif = "0.17"
@@ -19,7 +19,7 @@ is-terminal = "0.4"
 tar = "0.4"
 xz2 = "0.1"
 zip = "0.6"
-tempfile = "3.10"
+tempfile = "3"
 zstd = "0.13"
 lz4_flex = "0.11"
 
