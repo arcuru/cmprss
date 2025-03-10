@@ -175,6 +175,8 @@
             gum # Pretty printing in scripts
             nodePackages.prettier
             statix
+            
+            pkg-config
 
             # For running tests
             diffutils
