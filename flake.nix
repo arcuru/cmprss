@@ -74,6 +74,10 @@
           # Clean the src to only have the Rust-relevant files
           src = craneLib.cleanCargoSource ./.;
           strictDeps = true;
+          nativeBuildInputs = [
+            pkgs.pkg-config
+            pkgs.gcc
+          ];
         };
 
         # Build only the cargo dependencies so we can cache them all when running in CI
@@ -175,8 +179,6 @@
             gum # Pretty printing in scripts
             nodePackages.prettier
             statix
-            
-            pkg-config
 
             # For running tests
             diffutils

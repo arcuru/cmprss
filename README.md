@@ -7,9 +7,6 @@
 
 **Mirrored on [GitHub](https://github.com/arcuru/cmprss) and [Codeberg](https://codeberg.org/arcuru/cmprss). GitHub is the official repo, but use either repo to contribute. Issues can't be synced so there may be some duplicates.**
 
-**Status: Alpha.**
-CLI is relatively stable but likely contains bugs, and there may be future breaking changes.
-
 A compression multi-tool for the command line.
 Replace `tar` with something you can remember.
 [Relevant XKCD](https://xkcd.com/1168/).
@@ -20,9 +17,9 @@ Currently supports:
 - gzip
 - lz4
 - tar
-- xz
+- xz (bindings)
 - zip
-- zstd
+- zstd (bindings)
 
 ## Install
 
