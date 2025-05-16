@@ -68,11 +68,13 @@ impl Compressor for Lz4 {
                 Box::new(BufReader::new(File::open(path)?))
             }
             CmprssInput::Pipe(stdin) => Box::new(BufReader::new(stdin)),
+            CmprssInput::Reader(reader) => reader.0,
         };
 
         let output_stream: Box<dyn Write + Send> = match &output {
             CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
             CmprssOutput::Pipe(stdout) => Box::new(BufWriter::new(stdout)),
+            CmprssOutput::Writer(_) => panic!("Writer output not supported in this context"),
         };
 
         // Create a lz4 encoder
@@ -102,18 +104,21 @@ impl Compressor for Lz4 {
             }
         }
 
+        let mut file_size = None;
         let input_stream: Box<dyn Read + Send> = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() > 1 {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidInput,
-                        "Multiple input files not supported for lz4",
+                        "Multiple input files not supported for lz4 extraction",
                     ));
                 }
                 let path = &paths[0];
+                file_size = Some(std::fs::metadata(path)?.len());
                 Box::new(BufReader::new(File::open(path)?))
             }
             CmprssInput::Pipe(stdin) => Box::new(BufReader::new(stdin)),
+            CmprssInput::Reader(reader) => reader.0,
         };
 
         // Create a lz4 decoder
@@ -122,6 +127,7 @@ impl Compressor for Lz4 {
         let mut output_stream: Box<dyn Write + Send> = match &output {
             CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
             CmprssOutput::Pipe(stdout) => Box::new(BufWriter::new(stdout)),
+            CmprssOutput::Writer(_) => panic!("Writer output not supported in this context"),
         };
 
         // Copy the decoded data to the output with progress reporting
@@ -129,7 +135,7 @@ impl Compressor for Lz4 {
             &mut decoder,
             &mut output_stream,
             self.progress_args.chunk_size.size_in_bytes,
-            None,
+            file_size,
             self.progress_args.progress,
             &output,
         )?;

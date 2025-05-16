@@ -52,6 +52,7 @@ impl Compressor for Tar {
                 io::copy(&mut temp_file, &mut pipe)?;
                 Ok(())
             }
+            CmprssOutput::Writer(_) => panic!("Writer output not supported in tar compress"),
         }
     }
 
@@ -88,9 +89,15 @@ impl Compressor for Tar {
                         let mut archive = Archive::new(temp_file);
                         archive.unpack(out_dir)
                     }
+                    CmprssInput::Reader(reader) => {
+                        let mut archive = Archive::new(reader.0);
+                        archive.unpack(out_dir)?;
+                        Ok(())
+                    }
                 }
             }
             CmprssOutput::Pipe(_) => cmprss_error("tar extraction to stdout is not supported"),
+            CmprssOutput::Writer(_) => panic!("Writer output not supported in tar extract"),
         }
     }
 }
@@ -123,6 +130,9 @@ impl Tar {
                 io::copy(&mut pipe, &mut temp_file)?;
                 temp_file.seek(SeekFrom::Start(0))?;
                 archive.append_file("archive", &mut temp_file)?;
+            }
+            CmprssInput::Reader(reader) => {
+                return cmprss_error("Cannot tar a reader input directly");
             }
         }
         archive.finish()

@@ -2,6 +2,7 @@ use clap::Args;
 use std::ffi::OsStr;
 use std::fmt;
 use std::io;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -154,7 +155,7 @@ pub struct LevelArgs {
 
 /// Common interface for all compressor implementations
 #[allow(unused_variables)]
-pub trait Compressor {
+pub trait Compressor: Send + Sync {
     /// Name of this Compressor
     fn name(&self) -> &str;
 
@@ -230,6 +231,40 @@ pub fn cmprss_error(message: &str) -> Result<(), io::Error> {
     Err(io::Error::new(io::ErrorKind::Other, message))
 }
 
+/// Wrapper for Read + Send to allow Debug
+pub struct ReadWrapper(pub Box<dyn Read + Send>);
+
+impl Read for ReadWrapper {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buf)
+    }
+}
+
+impl fmt::Debug for ReadWrapper {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ReadWrapper")
+    }
+}
+
+/// Wrapper for Write + Send to allow Debug
+pub struct WriteWrapper(pub Box<dyn Write + Send>);
+
+impl Write for WriteWrapper {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
+impl fmt::Debug for WriteWrapper {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "WriteWrapper")
+    }
+}
+
 /// Defines the possible inputs of a compressor
 #[derive(Debug)]
 pub enum CmprssInput {
@@ -237,6 +272,8 @@ pub enum CmprssInput {
     Path(Vec<PathBuf>),
     /// Input pipe
     Pipe(std::io::Stdin),
+    /// In-memory reader (for piping between compressors)
+    Reader(ReadWrapper),
 }
 
 /// Defines the possible outputs of a compressor
@@ -244,6 +281,8 @@ pub enum CmprssInput {
 pub enum CmprssOutput {
     Path(PathBuf),
     Pipe(std::io::Stdout),
+    /// In-memory writer (for piping between compressors)
+    Writer(WriteWrapper),
 }
 
 #[cfg(test)]

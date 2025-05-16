@@ -94,11 +94,13 @@ impl Compressor for Gzip {
                 Box::new(BufReader::new(File::open(path)?))
             }
             CmprssInput::Pipe(stdin) => Box::new(BufReader::new(stdin)),
+            CmprssInput::Reader(reader) => reader.0,
         };
 
         let output_stream: Box<dyn Write + Send> = match &output {
             CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
             CmprssOutput::Pipe(stdout) => Box::new(BufWriter::new(stdout)),
+            CmprssOutput::Writer(_) => panic!("Writer output not supported in this context"),
         };
 
         // Create a gzip encoder with the specified compression level
@@ -137,11 +139,13 @@ impl Compressor for Gzip {
                 Box::new(BufReader::new(File::open(path)?))
             }
             CmprssInput::Pipe(stdin) => Box::new(BufReader::new(stdin)),
+            CmprssInput::Reader(reader) => reader.0,
         };
 
         let mut output_stream: Box<dyn Write + Send> = match &output {
             CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
             CmprssOutput::Pipe(stdout) => Box::new(BufWriter::new(stdout)),
+            CmprssOutput::Writer(_) => panic!("Writer output not supported in this context"),
         };
 
         let mut decoder = GzDecoder::new(input_stream);

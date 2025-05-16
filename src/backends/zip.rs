@@ -52,6 +52,9 @@ impl Zip {
                 zip_writer.start_file("archive", options)?;
                 io::copy(&mut pipe, &mut zip_writer)?;
             }
+            CmprssInput::Reader(_) => {
+                return cmprss_error("Cannot zip a reader input");
+            }
         }
 
         zip_writer.finish()?;
@@ -86,6 +89,9 @@ impl Compressor for Zip {
                 // Copy the temporary file to the pipe
                 io::copy(&mut temp_file, &mut pipe)?;
                 Ok(())
+            }
+            CmprssOutput::Writer(_) => {
+                panic!("Writer output not supported in zip compress");
             }
         }
     }
@@ -127,9 +133,15 @@ impl Compressor for Zip {
                             .extract(out_dir)
                             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
                     }
+                    CmprssInput::Reader(_) => {
+                        return cmprss_error(
+                            "Cannot extract from a reader input for zip (requires seekable input)",
+                        );
+                    }
                 }
             }
             CmprssOutput::Pipe(_) => cmprss_error("zip extraction to stdout is not supported"),
+            CmprssOutput::Writer(_) => panic!("Writer output not supported in zip extract"),
         }
     }
 }

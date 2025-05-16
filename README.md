@@ -73,13 +73,32 @@ Extract a gzip compressed file to stdout
 cmprss file.txt.gz > file.txt
 ```
 
-`cmprss` doesn't yet support multiple levels of archiving, like `.tar.gz`, but they are easy to work with using pipes
+### Multi-level Compression
+
+`cmprss` supports multi-level archives like `.tar.gz` directly:
 
 ```bash
-cmprss tar uncompressed_dir | cmprss gz > out.tar.gz
-cmprss gzip --extract out.tar.gz | cmprss tar -e output_dir
+# Compress a directory to a tar.gz file in one step
+cmprss uncompressed_dir out.tar.gz
 
-# Or a full roundtrip in one line
+# Extract a tar.gz file to the current directory in one step
+cmprss out.tar.gz
+```
+
+Any combination of supported formats can be used together:
+
+```bash
+# Create a zip.tar.xz archive (zip -> tar -> xz)
+cmprss directory archive.zip.tar.xz
+
+# Extract a zip.tar.xz archive (xz -> tar -> zip)
+cmprss archive.zip.tar.xz output_dir
+```
+
+Pipes can still be used if preferred:
+
+```bash
+# A full roundtrip in one line using pipes
 cmprss tar dir | cmprss gz | cmprss gz -e | cmprss tar -e
 ```
 

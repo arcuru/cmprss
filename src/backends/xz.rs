@@ -5,7 +5,7 @@ use crate::{
 use clap::Args;
 use std::{
     fs::File,
-    io::{self, Read, Write},
+    io::{self, BufReader, BufWriter, Read, Write},
 };
 use xz2::read::XzDecoder;
 use xz2::write::XzEncoder;
@@ -65,20 +65,22 @@ impl Compressor for Xz {
         let mut input_stream = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() > 1 {
-                    return cmprss_error("only 1 file can be compressed at a time");
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Multiple input files not supported for xz",
+                    ));
                 }
-                let file = Box::new(File::open(paths[0].as_path())?);
-                // Get the file size for the progress bar
-                if let Ok(metadata) = file.metadata() {
-                    file_size = Some(metadata.len());
-                }
-                file
+                let path = &paths[0];
+                file_size = Some(std::fs::metadata(path)?.len());
+                Box::new(BufReader::new(File::open(path)?)) as Box<dyn Read + Send>
             }
             CmprssInput::Pipe(pipe) => Box::new(pipe) as Box<dyn Read + Send>,
+            CmprssInput::Reader(reader) => reader.0,
         };
         let output_stream: Box<dyn Write + Send> = match &output {
-            CmprssOutput::Path(path) => Box::new(File::create(path)?),
+            CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
             CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
+            CmprssOutput::Writer(_) => panic!("Writer output not supported in this context"),
         };
         let mut encoder = XzEncoder::new(output_stream, self.level as u32);
 
@@ -100,20 +102,22 @@ impl Compressor for Xz {
         let input_stream: Box<dyn Read + Send> = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() > 1 {
-                    return cmprss_error("only 1 file can be extracted at a time");
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Multiple input files not supported for xz extraction",
+                    ));
                 }
-                let file = Box::new(File::open(paths[0].as_path())?);
-                // Get the file size for the progress bar
-                if let Ok(metadata) = file.metadata() {
-                    file_size = Some(metadata.len());
-                }
-                file
+                let path = &paths[0];
+                file_size = Some(std::fs::metadata(path)?.len());
+                Box::new(BufReader::new(File::open(path)?)) as Box<dyn Read + Send>
             }
             CmprssInput::Pipe(pipe) => Box::new(pipe) as Box<dyn Read + Send>,
+            CmprssInput::Reader(reader) => reader.0,
         };
         let mut output_stream: Box<dyn Write + Send> = match &output {
-            CmprssOutput::Path(path) => Box::new(File::create(path)?),
+            CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
             CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
+            CmprssOutput::Writer(_) => panic!("Writer output not supported in this context"),
         };
 
         // Create an XZ decoder to decompress the input
