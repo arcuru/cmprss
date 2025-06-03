@@ -5,6 +5,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+// TODO: This was moved to src/interface.rs, delete this after verifying it's not used elsewhere
 /// Enum to represent whether a compressor extracts to a file or directory by default
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExtractedTarget {
@@ -14,7 +15,8 @@ pub enum ExtractedTarget {
     DIRECTORY,
 }
 
-#[derive(Args, Debug)]
+// TODO: This was moved to src/args.rs, delete this after verifying it's not used elsewhere
+#[derive(Args, Debug, Default, Clone)]
 pub struct CommonArgs {
     /// Input file/directory
     #[arg(short, long)]
@@ -54,6 +56,7 @@ pub struct CommonArgs {
     pub ignore_stdout: bool,
 }
 
+// TODO: This was moved to src/interface.rs, delete this after verifying it's not used elsewhere
 /// Trait for validating compression levels for different compressors
 #[allow(dead_code)]
 pub trait CompressionLevelValidator {
@@ -144,6 +147,7 @@ impl FromStr for CompressionLevel {
     }
 }
 
+// TODO: This was moved to src/args.rs, delete this after verifying it's not used elsewhere
 #[derive(Args, Debug, Default, Clone, Copy)]
 pub struct LevelArgs {
     /// Level of compression.
@@ -152,6 +156,7 @@ pub struct LevelArgs {
     pub level: CompressionLevel,
 }
 
+// TODO: This was moved to src/interface.rs, delete this after verifying it's not used elsewhere
 /// Common interface for all compressor implementations
 #[allow(unused_variables)]
 pub trait Compressor {
@@ -244,6 +249,78 @@ pub enum CmprssInput {
 pub enum CmprssOutput {
     Path(PathBuf),
     Pipe(std::io::Stdout),
+}
+
+// TODO: This was moved to src/interface.rs, delete this after verifying it's not used elsewhere
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Format {
+    Tar,
+    Gzip,
+    Xz,
+    Bzip2,
+    Zip,
+    Zstd,
+    Lz4,
+    Rar,
+}
+
+// TODO: This was moved to src/interface.rs, delete this after verifying it's not used elsewhere
+impl Format {
+    pub fn from_path(path: &Path) -> Option<Self> {
+        let extension = path.extension().and_then(OsStr::to_str)?;
+        match extension {
+            "tar" => Some(Format::Tar),
+            "gz" | "tgz" => Some(Format::Gzip),
+            "xz" | "txz" => Some(Format::Xz),
+            "bz2" | "tbz2" => Some(Format::Bzip2),
+            "zip" => Some(Format::Zip),
+            "zst" | "tzst" => Some(Format::Zstd),
+            "lz4" | "tlz4" => Some(Format::Lz4),
+            "rar" => Some(Format::Rar),
+            _ => None,
+        }
+    }
+
+    pub fn extensions(&self) -> &[&str] {
+        match self {
+            Format::Tar => &["tar"],
+            Format::Gzip => &["gz", "tgz"],
+            Format::Xz => &["xz", "txz"],
+            Format::Bzip2 => &["bz2", "tbz2"],
+            Format::Zip => &["zip"],
+            Format::Zstd => &["zst", "tzst"],
+            Format::Lz4 => &["lz4", "tlz4"],
+            Format::Rar => &["rar"],
+        }
+    }
+}
+
+/// After unpacking an archive, if there is only one file/directory, move it up.
+/// This is to deal with archives that have a single root directory.
+// TODO: This was moved to src/unpack.rs, delete this after verifying it's not used elsewhere
+pub fn finalize_unpack(dest_path: &Path, format: Format) {
+    if !matches!(format, Format::Tar | Format::Zip | Format::Rar) {
+        return;
+    }
+
+    let entries: Vec<_> = match std::fs::read_dir(dest_path) {
+        Ok(reader) => reader.filter_map(Result::ok).collect(),
+        Err(_) => return,
+    };
+
+    if entries.len() == 1 {
+        let entry_path = entries[0].path();
+        let temp_dest = dest_path.with_extension("cmprss_temp");
+
+        if std::fs::rename(&entry_path, &temp_dest).is_ok() {
+            if std::fs::remove_dir(dest_path).is_ok() {
+                let _ = std::fs::rename(&temp_dest, dest_path);
+            } else {
+                // Failed to remove original directory, move back
+                let _ = std::fs::rename(&temp_dest, &entry_path);
+            }
+        }
+    }
 }
 
 #[cfg(test)]

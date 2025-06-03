@@ -47,6 +47,9 @@ enum Format {
 
     /// lz4 compression
     Lz4(Lz4Args),
+
+    /// rar archive format
+    Rar(RarArgs),
 }
 
 /// Get the input filename or return a default file
@@ -93,6 +96,7 @@ fn get_compressor_from_filename(filename: &Path) -> Option<Box<dyn Compressor>> 
         Box::<Zip>::default(),
         Box::<Zstd>::default(),
         Box::<Lz4>::default(),
+        Box::<Rar>::default(),
     ];
     compressors.into_iter().find(|c| c.is_archive(filename))
 }
@@ -505,6 +509,7 @@ fn main() {
         Some(Format::Zip(a)) => command(Some(Box::new(Zip::new(&a))), &a.common_args),
         Some(Format::Zstd(a)) => command(Some(Box::new(Zstd::new(&a))), &a.common_args),
         Some(Format::Lz4(a)) => command(Some(Box::new(Lz4::new(&a))), &a.common_args),
+        Some(Format::Rar(a)) => command(Some(Box::new(Rar::new(a.clone()))), &a.common_args),
         _ => command(None, &args.base_args),
     }
     .unwrap_or_else(|e| {
