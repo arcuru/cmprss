@@ -135,12 +135,46 @@ fn test_tar_gz_extract() -> Result<(), Box<dyn std::error::Error>> {
         .assert()
         .success();
 
-    // Verify the file was extracted correctly
-    let extracted_file = extract_dir.child("test_file.txt");
+    // Verify the file was extracted correctly (tar preserves the directory structure)
+    let extracted_file = extract_dir.child("source").child("test_file.txt");
     extracted_file.assert(predicate::path::exists());
     extracted_file.assert(predicate::str::contains(
         "test content for tar.gz extraction",
     ));
+
+    Ok(())
+}
+
+/// Full roundtrip: directory -> tar.xz -> directory
+#[test]
+fn test_tar_xz_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = TempDir::new()?;
+
+    let source_dir = temp_dir.child("source");
+    source_dir.create_dir_all()?;
+    let test_file = source_dir.child("data.txt");
+    test_file.write_str("tar.xz roundtrip content")?;
+
+    let archive = temp_dir.child("archive.tar.xz");
+    Command::cargo_bin("cmprss")?
+        .arg("--compress")
+        .arg(source_dir.path())
+        .arg(archive.path())
+        .assert()
+        .success();
+
+    let extract_dir = temp_dir.child("extract");
+    extract_dir.create_dir_all()?;
+    Command::cargo_bin("cmprss")?
+        .arg("--extract")
+        .arg(archive.path())
+        .arg(extract_dir.path())
+        .assert()
+        .success();
+
+    let extracted_file = extract_dir.child("source").child("data.txt");
+    extracted_file.assert(predicate::path::exists());
+    extracted_file.assert(predicate::str::contains("tar.xz roundtrip content"));
 
     Ok(())
 }

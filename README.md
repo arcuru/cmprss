@@ -75,30 +75,25 @@ cmprss file.txt.gz > file.txt
 
 ### Multi-level Compression
 
-`cmprss` supports multi-level archives like `.tar.gz` directly:
+`cmprss` supports multi-level archives like `.tar.gz`, `.tar.xz`, or `.zstd.bz2` directly:
 
 ```bash
-# Compress a directory to a tar.gz file in one step
-cmprss uncompressed_dir out.tar.gz
+# Compress a directory to a tar.gz file
+cmprss directory out.tar.gz
 
-# Extract a tar.gz file to the current directory in one step
-cmprss out.tar.gz
-```
+# Extract a tar.xz file to a directory
+cmprss --extract archive.tar.xz output_dir
 
-Any combination of supported formats can be used together:
+# Gzip an existing tar archive
+cmprss archive.tar archive.tar.gz
 
-```bash
-# Create a zip.tar.xz archive (zip -> tar -> xz)
-cmprss directory archive.zip.tar.xz
-
-# Extract a zip.tar.xz archive (xz -> tar -> zip)
-cmprss archive.zip.tar.xz output_dir
+# Extract just the xz layer
+cmprss archive.tar.xz archive.tar
 ```
 
 Pipes can still be used if preferred:
 
 ```bash
-# A full roundtrip in one line using pipes
 cmprss tar dir | cmprss gz | cmprss gz -e | cmprss tar -e
 ```
 

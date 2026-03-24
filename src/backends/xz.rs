@@ -77,22 +77,26 @@ impl Compressor for Xz {
             CmprssInput::Pipe(pipe) => Box::new(pipe) as Box<dyn Read + Send>,
             CmprssInput::Reader(reader) => reader.0,
         };
-        let output_stream: Box<dyn Write + Send> = match &output {
-            CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
-            CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
-            CmprssOutput::Writer(_) => panic!("Writer output not supported in this context"),
-        };
-        let mut encoder = XzEncoder::new(output_stream, self.level as u32);
-
-        // Use the custom output function to handle progress bar updates
-        copy_with_progress(
-            &mut input_stream,
-            &mut encoder,
-            self.progress_args.chunk_size.size_in_bytes,
-            file_size,
-            self.progress_args.progress,
-            &output,
-        )?;
+        if let CmprssOutput::Writer(writer) = output {
+            let mut encoder = XzEncoder::new(writer, self.level as u32);
+            io::copy(&mut input_stream, &mut encoder)?;
+            encoder.finish()?;
+        } else {
+            let output_stream: Box<dyn Write + Send> = match &output {
+                CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
+                CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
+                CmprssOutput::Writer(_) => unreachable!(),
+            };
+            let mut encoder = XzEncoder::new(output_stream, self.level as u32);
+            copy_with_progress(
+                &mut input_stream,
+                &mut encoder,
+                self.progress_args.chunk_size.size_in_bytes,
+                file_size,
+                self.progress_args.progress,
+                &output,
+            )?;
+        }
 
         Ok(())
     }
@@ -114,24 +118,25 @@ impl Compressor for Xz {
             CmprssInput::Pipe(pipe) => Box::new(pipe) as Box<dyn Read + Send>,
             CmprssInput::Reader(reader) => reader.0,
         };
-        let mut output_stream: Box<dyn Write + Send> = match &output {
-            CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
-            CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
-            CmprssOutput::Writer(_) => panic!("Writer output not supported in this context"),
-        };
-
-        // Create an XZ decoder to decompress the input
         let mut decoder = XzDecoder::new(input_stream);
 
-        // Use the custom output function to handle progress bar updates
-        copy_with_progress(
-            &mut decoder,
-            &mut *output_stream,
-            self.progress_args.chunk_size.size_in_bytes,
-            file_size,
-            self.progress_args.progress,
-            &output,
-        )?;
+        if let CmprssOutput::Writer(mut writer) = output {
+            io::copy(&mut decoder, &mut writer)?;
+        } else {
+            let mut output_stream: Box<dyn Write + Send> = match &output {
+                CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
+                CmprssOutput::Pipe(pipe) => Box::new(pipe) as Box<dyn Write + Send>,
+                CmprssOutput::Writer(_) => unreachable!(),
+            };
+            copy_with_progress(
+                &mut decoder,
+                &mut *output_stream,
+                self.progress_args.chunk_size.size_in_bytes,
+                file_size,
+                self.progress_args.progress,
+                &output,
+            )?;
+        }
 
         Ok(())
     }

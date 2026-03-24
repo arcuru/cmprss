@@ -19,37 +19,18 @@ impl MultiLevelCompressor {
 
     /// Create a new MultiLevelCompressor from compressor type names
     pub fn from_names(compressor_names: &[String]) -> io::Result<Self> {
-        let mut compressors: Vec<Box<dyn Compressor>> = Vec::new();
-
-        for name in compressor_names {
-            let compressor: Box<dyn Compressor> = match name.as_str() {
-                "tar" => Box::new(crate::backends::Tar::default()),
-                "gzip" | "gz" => Box::new(crate::backends::Gzip::default()),
-                "xz" => Box::new(crate::backends::Xz::default()),
-                "bzip2" | "bz2" => Box::new(crate::backends::Bzip2::default()),
-                "zip" => Box::new(crate::backends::Zip::default()),
-                "zstd" | "zst" => Box::new(crate::backends::Zstd::default()),
-                "lz4" => Box::new(crate::backends::Lz4::default()),
-                _ => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        format!("Unknown compressor type: {}", name),
-                    ))
-                }
-            };
-            compressors.push(compressor);
-        }
-
+        let compressors = compressor_names
+            .iter()
+            .map(|name| Self::create_compressor(name))
+            .collect::<io::Result<Vec<_>>>()?;
         Ok(Self { compressors })
     }
 
     /// Get a string representation of the chained format (e.g., "tar.gz")
     fn format_chain(&self) -> String {
-        // Create a format string like "tar.gz" from the chain of compressors
         self.compressors
             .iter()
             .map(|c| c.extension())
-            .rev() // Reverse to get innermost first
             .collect::<Vec<&str>>()
             .join(".")
     }
@@ -65,7 +46,7 @@ impl MultiLevelCompressor {
             "zstd" | "zst" => Ok(Box::new(crate::backends::Zstd::default())),
             "lz4" => Ok(Box::new(crate::backends::Lz4::default())),
             _ => Err(io::Error::new(
-                io::ErrorKind::Other,
+                io::ErrorKind::InvalidInput,
                 format!("Unknown compressor type: {}", name),
             )),
         }
@@ -178,8 +159,7 @@ impl Drop for PipeWriter {
 
 impl Compressor for MultiLevelCompressor {
     fn name(&self) -> &str {
-        // Return the name of the first (outermost) compressor
-        if let Some(comp) = self.compressors.first() {
+        if let Some(comp) = self.compressors.last() {
             comp.name()
         } else {
             "multi"
@@ -187,9 +167,7 @@ impl Compressor for MultiLevelCompressor {
     }
 
     fn extension(&self) -> &str {
-        // This is a bit of a hack since we can't return an owned String from this method
-        // We'll just return the extension of the outermost compressor
-        if let Some(comp) = self.compressors.first() {
+        if let Some(comp) = self.compressors.last() {
             comp.extension()
         } else {
             "multi"
@@ -197,24 +175,50 @@ impl Compressor for MultiLevelCompressor {
     }
 
     fn default_extracted_target(&self) -> ExtractedTarget {
-        // The extracted target depends on the innermost compressor
-        if let Some(comp) = self.compressors.last() {
-            // The innermost compressor's target is what matters
+        // After full extraction, the result is what the innermost compressor produces
+        if let Some(comp) = self.compressors.first() {
             comp.default_extracted_target()
         } else {
-            // If there are no compressors (shouldn't happen), default to FILE
             ExtractedTarget::FILE
         }
     }
 
-    fn is_archive(&self, in_path: &Path) -> bool {
-        // Check if the path matches our format chain
-        if let Some(filename) = in_path.to_str() {
-            let format_chain = self.format_chain();
-            filename.ends_with(&format_chain)
-        } else {
-            false
+    fn default_compressed_filename(&self, in_path: &Path) -> String {
+        // Add all extensions: input.txt → input.txt.tar.gz
+        let base = in_path
+            .file_name()
+            .unwrap_or_else(|| std::ffi::OsStr::new("archive"))
+            .to_str()
+            .unwrap();
+        format!("{}.{}", base, self.format_chain())
+    }
+
+    fn default_extracted_filename(&self, in_path: &Path) -> String {
+        if self.default_extracted_target() == ExtractedTarget::DIRECTORY {
+            return ".".to_string();
         }
+        // Strip all known extensions: input.tar.gz → input
+        let mut name = in_path
+            .file_name()
+            .unwrap_or_else(|| std::ffi::OsStr::new("archive"))
+            .to_str()
+            .unwrap()
+            .to_string();
+        for comp in self.compressors.iter().rev() {
+            let ext = format!(".{}", comp.extension());
+            if let Some(stripped) = name.strip_suffix(&ext) {
+                name = stripped.to_string();
+            }
+        }
+        name
+    }
+
+    fn is_archive(&self, in_path: &Path) -> bool {
+        let file_name = match in_path.file_name().and_then(|f| f.to_str()) {
+            Some(f) => f,
+            None => return false,
+        };
+        file_name.ends_with(&format!(".{}", self.format_chain()))
     }
 
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
@@ -232,15 +236,15 @@ impl Compressor for MultiLevelCompressor {
         let mut op_compressors: Vec<Box<dyn Compressor>> = self
             .compressors
             .iter()
-            .map(|c| Self::create_compressor(c.name()).unwrap()) // TODO: Handle error properly
-            .collect();
+            .map(|c| Self::create_compressor(c.name()))
+            .collect::<io::Result<Vec<_>>>()?;
 
         let mut handles = Vec::new();
         let mut current_thread_input = input; // Consumed by the first (innermost) compressor
         let buffer_size = 64 * 1024;
 
         // Process all but the last (outermost) compressor in separate threads
-        for i in 0..op_compressors.len() - 1 {
+        for _ in 0..op_compressors.len() - 1 {
             let compressor_for_this_stage = op_compressors.remove(0);
             let (sender, receiver) = channel::<Vec<u8>>();
             let pipe_writer = PipeWriter::new(sender, buffer_size);
@@ -265,7 +269,9 @@ impl Compressor for MultiLevelCompressor {
         last_compressor.compress(current_thread_input, output)?;
 
         for handle in handles {
-            handle.join().unwrap()?; // TODO: Handle thread errors properly
+            handle.join().map_err(|_| {
+                io::Error::new(io::ErrorKind::Other, "Compression thread panicked")
+            })??;
         }
         Ok(())
     }
@@ -285,16 +291,16 @@ impl Compressor for MultiLevelCompressor {
         let mut op_extractors: Vec<Box<dyn Compressor>> = self
             .compressors
             .iter()
-            .rev() // Iterate from Outermost to Innermost
-            .map(|c| Self::create_compressor(c.name()).unwrap()) // TODO: Handle error properly
-            .collect();
+            .rev()
+            .map(|c| Self::create_compressor(c.name()))
+            .collect::<io::Result<Vec<_>>>()?;
 
         let mut handles = Vec::new();
         let mut current_thread_input = input; // Consumed by the first (outermost) extractor
         let buffer_size = 64 * 1024;
 
         // Process all but the last (innermost) extractor in separate threads.
-        for i in 0..op_extractors.len() - 1 {
+        for _ in 0..op_extractors.len() - 1 {
             let extractor_for_this_stage = op_extractors.remove(0);
             let (sender, receiver) = channel::<Vec<u8>>();
             let pipe_writer = PipeWriter::new(sender, buffer_size);
@@ -336,7 +342,9 @@ impl Compressor for MultiLevelCompressor {
         last_extractor.extract(current_thread_input, final_output)?;
 
         for handle in handles {
-            handle.join().unwrap()?; // TODO: Handle thread errors properly
+            handle.join().map_err(|_| {
+                io::Error::new(io::ErrorKind::Other, "Extraction thread panicked")
+            })??;
         }
         Ok(())
     }
@@ -346,7 +354,6 @@ impl Compressor for MultiLevelCompressor {
 mod tests {
     use super::*;
     use std::fs;
-    use std::io::{Read, Write};
     use tempfile::tempdir;
 
     #[test]

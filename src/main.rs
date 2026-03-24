@@ -84,9 +84,12 @@ struct Job {
 
 /// Get a compressor from a filename
 fn get_compressor_from_filename(filename: &Path) -> Option<Box<dyn Compressor>> {
+    // Use just the filename component to avoid dots in directory names
+    let file_name = filename.file_name()?.to_str()?;
+
     // Prioritize checking for multi-level formats first
-    if let Some(filename_str) = filename.to_str() {
-        let parts: Vec<&str> = filename_str.split('.').collect();
+    {
+        let parts: Vec<&str> = file_name.split('.').collect();
         // A potential multi-level format like "archive.tar.gz" will have at least 3 parts
         if parts.len() >= 3 {
             // Get all available single compressors for matching extensions
@@ -140,47 +143,39 @@ fn get_compressor_from_filename(filename: &Path) -> Option<Box<dyn Compressor>> 
                 compressor_types.reverse(); // e.g., ["tar", "gzip"]
                 return Some(create_multi_level_compressor(&compressor_types));
             }
-            // If compressor_types is empty here, it means the multi-level parse failed (e.g. "file.foo.bar" with unknown foo/bar)
-            // or an unknown extension was found in the chain. We'll fall through to single extension check.
         }
     }
 
-    // Fallback: If not a recognized multi-level format, or if fewer than 3 parts (e.g. "file.gz"),
-    // try matching a single known compressor extension.
-    let single_compressors: Vec<Box<dyn Compressor>> = vec![
-        Box::<Tar>::default(),
+    // Fallback: try matching a single known compressor extension
+    for sc in [
+        Box::<Tar>::default() as Box<dyn Compressor>,
         Box::<Gzip>::default(),
         Box::<Xz>::default(),
         Box::<Bzip2>::default(),
         Box::<Zip>::default(),
         Box::<Zstd>::default(),
         Box::<Lz4>::default(),
-    ];
-
-    // Check if file extension matches any known format
-    // This is now a fallback.
-    // Ensure this doesn't misinterpret "foo.tar.gz" as just "gz" if multi-level check failed for some reason
-    // A more robust check here might be to see if filename *only* ends with .ext and not .something_else.ext
-    // For now, the standard check is:
-    if let Some(filename_str) = filename.to_str() {
-        for sc in single_compressors {
-            // A simple "ends_with" can be problematic for "file.tar.gz" vs "file.gz"
-            // We need to be more specific. The extension should be exactly the compressor's extension.
-            let expected_extension = format!(".{}", sc.extension());
-            if filename_str.ends_with(&expected_extension) {
-                // Further check: ensure it's not something like ".tar.gz" being matched by ".gz"
-                // if we want to be super sure, but the multi-level check should catch .tar.gz first.
-                // A simple way: if it ends with ".tar.gz", Gzip (gz) should not match here IF Tar (tar) also exists.
-                // The current structure relies on multi-level being caught first.
-                // If multi-level parsing failed, then we check single extensions.
-                // Example: "archive.gz" -> Gzip
-                // Example: "archive.tar" -> Tar
-                // Example: "archive.unknown.gz" -> Multi-level fails, then Gzip matches.
-                return Some(sc);
-            }
+    ] {
+        let expected_extension = format!(".{}", sc.extension());
+        if file_name.ends_with(&expected_extension) {
+            return Some(sc);
         }
     }
     None
+}
+
+/// Get a single compressor from an extension string (no multi-level detection)
+fn get_compressor_from_extension(ext: &str) -> Option<Box<dyn Compressor>> {
+    match ext {
+        "tar" => Some(Box::<Tar>::default()),
+        "gz" => Some(Box::<Gzip>::default()),
+        "xz" => Some(Box::<Xz>::default()),
+        "bz2" => Some(Box::<Bzip2>::default()),
+        "zip" => Some(Box::<Zip>::default()),
+        "zst" => Some(Box::<Zstd>::default()),
+        "lz4" => Some(Box::<Lz4>::default()),
+        _ => None,
+    }
 }
 
 /// Create a MultiLevelCompressor from a list of compressor types
@@ -270,15 +265,6 @@ fn guess_from_filenames(
         (Some(c), None) => (Some(c), Action::Compress),
         (None, Some(e)) => (Some(e), Action::Extract),
         (Some(c), Some(e)) => {
-            if c.name() == e.name() {
-                // Same format for input and output, can't decide
-                if output.is_dir() {
-                    // If output is a directory, we're probably extracting
-                    return (Some(e), Action::Extract);
-                }
-                return (Some(c), Action::Unknown);
-            }
-
             // Compare the input and output extensions to see if one has an extra extension
             let input_file = input.file_name().unwrap().to_str().unwrap();
             let input_ext = input.extension().unwrap_or_default();
@@ -288,11 +274,21 @@ fn guess_from_filenames(
             let guessed_input = output_file.to_string() + "." + input_ext.to_str().unwrap();
 
             if guessed_output == output_file {
-                (Some(c), Action::Compress)
+                // Input is "archive.tar", output is "archive.tar.gz" — only add the outer layer
+                let single_compressor = get_compressor_from_extension(output_ext.to_str().unwrap_or(""));
+                (single_compressor.or(Some(c)), Action::Compress)
             } else if guessed_input == input_file {
-                (Some(e), Action::Extract)
+                // Output is "archive.tar", input is "archive.tar.gz" — only strip the outer layer
+                let single_compressor = get_compressor_from_extension(input_ext.to_str().unwrap_or(""));
+                (single_compressor.or(Some(e)), Action::Extract)
+            } else if c.name() == e.name() {
+                // Same format for input and output, can't decide
+                if output.is_dir() {
+                    (Some(e), Action::Extract)
+                } else {
+                    (Some(c), Action::Unknown)
+                }
             } else if output.is_dir() {
-                // If output is a directory, we're probably extracting
                 (Some(e), Action::Extract)
             } else {
                 (None, Action::Unknown)
@@ -512,125 +508,30 @@ fn get_job(
                 }
             }
             Action::Extract => {
-                // Look at the input name
                 if let CmprssInput::Path(paths) = &cmprss_input {
                     if paths.len() != 1 {
-                        // When extracting, we expect a single input file
                         return Err(io::Error::new(
                             io::ErrorKind::Other,
                             "Expected a single archive to extract",
                         ));
                     }
                     compressor = get_compressor_from_filename(paths.first().unwrap());
-
-                    // If we still couldn't guess the compressor, try harder with multi-level extraction
-                    if compressor.is_none() && paths.len() == 1 {
-                        if let Some(filename_str) = paths.first().unwrap().to_str() {
-                            // Try to parse multi-level formats (e.g., tar.gz)
-                            let parts: Vec<&str> = filename_str.split('.').collect();
-                            if parts.len() >= 3 {
-                                // Get all available compressors
-                                let compressors: Vec<Box<dyn Compressor>> = vec![
-                                    Box::<Tar>::default(),
-                                    Box::<Gzip>::default(),
-                                    Box::<Xz>::default(),
-                                    Box::<Bzip2>::default(),
-                                    Box::<Zip>::default(),
-                                    Box::<Zstd>::default(),
-                                    Box::<Lz4>::default(),
-                                ];
-
-                                // Get extensions in reverse order (from right to left)
-                                let mut extensions: Vec<String> = Vec::new();
-                                for i in 1..parts.len() {
-                                    extensions.push(parts[parts.len() - i].to_string());
-                                }
-
-                                // Try to find a compressor for each extension
-                                let mut compressor_types: Vec<String> = Vec::new();
-                                for ext in &extensions {
-                                    for compressor in &compressors {
-                                        if compressor.extension() == ext || compressor.name() == ext
-                                        {
-                                            compressor_types.push(compressor.name().to_string());
-                                            break;
-                                        }
-                                    }
-                                }
-
-                                // If we found compressor types, create a MultiLevelCompressor
-                                if !compressor_types.is_empty() {
-                                    compressor =
-                                        Some(create_multi_level_compressor(&compressor_types));
-                                }
-                            }
-                        }
-                    }
                 }
             }
             Action::Unknown => match (&cmprss_input, &cmprss_output) {
                 (CmprssInput::Path(paths), CmprssOutput::Path(path)) => {
-                    // Special case: if output is a directory, assume we're extracting
                     if path.is_dir() && paths.len() == 1 {
-                        // For extraction to directory, try to determine compressor from input file
                         compressor = get_compressor_from_filename(paths.first().unwrap());
                         action = Action::Extract;
 
-                        // If no compressor was found, try harder with multi-level detection
                         if compressor.is_none() {
-                            if let Some(filename_str) = paths.first().unwrap().to_str() {
-                                // Try to parse multi-level formats (e.g., tar.gz)
-                                let parts: Vec<&str> = filename_str.split('.').collect();
-                                if parts.len() >= 3 {
-                                    // Get all available compressors
-                                    let compressors: Vec<Box<dyn Compressor>> = vec![
-                                        Box::<Tar>::default(),
-                                        Box::<Gzip>::default(),
-                                        Box::<Xz>::default(),
-                                        Box::<Bzip2>::default(),
-                                        Box::<Zip>::default(),
-                                        Box::<Zstd>::default(),
-                                        Box::<Lz4>::default(),
-                                    ];
-
-                                    // Get extensions in reverse order (from right to left)
-                                    let mut extensions: Vec<String> = Vec::new();
-                                    for i in 1..parts.len() {
-                                        extensions.push(parts[parts.len() - i].to_string());
-                                    }
-
-                                    // Try to find a compressor for each extension
-                                    let mut compressor_types: Vec<String> = Vec::new();
-                                    for ext in &extensions {
-                                        for compressor in &compressors {
-                                            if compressor.extension() == ext
-                                                || compressor.name() == ext
-                                            {
-                                                compressor_types
-                                                    .push(compressor.name().to_string());
-                                                break;
-                                            }
-                                        }
-                                    }
-
-                                    // If we found compressor types, create a MultiLevelCompressor
-                                    if !compressor_types.is_empty() {
-                                        compressor =
-                                            Some(create_multi_level_compressor(&compressor_types));
-                                    }
-                                }
-                            }
-
-                            // If we still couldn't determine compressor, fail with a clear message
-                            if compressor.is_none() {
-                                return Err(io::Error::new(
-                                    io::ErrorKind::Other,
-                                    format!(
-                                        "Couldn't determine how to extract {:?}",
-                                        paths.first().unwrap()
-                                    ),
-                                ));
-                            }
+                            return Err(io::Error::new(
+                                io::ErrorKind::Other,
+                                format!(
+                                    "Couldn't determine how to extract {:?}",
+                                    paths.first().unwrap()
+                                ),
+                            ));
                         }
                     } else {
                         let (guessed_compressor, guessed_action) =

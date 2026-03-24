@@ -119,27 +119,27 @@ impl Compressor for Zstd {
             CmprssInput::Reader(reader) => reader.0,
         };
 
-        let output_stream: Box<dyn Write + Send> = match &output {
-            CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
-            CmprssOutput::Pipe(stdout) => Box::new(BufWriter::new(stdout)),
-            CmprssOutput::Writer(_) => panic!("Writer output not supported in this context"),
-        };
-
-        // Create a zstd encoder with the specified compression level
-        let mut encoder = Encoder::new(output_stream, self.compression_level)?;
-
-        // Copy the input to the encoder with progress reporting
-        copy_with_progress(
-            &mut input_stream,
-            &mut encoder,
-            self.progress_args.chunk_size.size_in_bytes,
-            file_size,
-            self.progress_args.progress,
-            &output,
-        )?;
-
-        // Finish the encoder to ensure all data is written
-        encoder.finish()?;
+        if let CmprssOutput::Writer(writer) = output {
+            let mut encoder = Encoder::new(writer, self.compression_level)?;
+            io::copy(&mut input_stream, &mut encoder)?;
+            encoder.finish()?;
+        } else {
+            let output_stream: Box<dyn Write + Send> = match &output {
+                CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
+                CmprssOutput::Pipe(stdout) => Box::new(BufWriter::new(stdout)),
+                CmprssOutput::Writer(_) => unreachable!(),
+            };
+            let mut encoder = Encoder::new(output_stream, self.compression_level)?;
+            copy_with_progress(
+                &mut input_stream,
+                &mut encoder,
+                self.progress_args.chunk_size.size_in_bytes,
+                file_size,
+                self.progress_args.progress,
+                &output,
+            )?;
+            encoder.finish()?;
+        }
 
         Ok(())
     }
@@ -169,24 +169,25 @@ impl Compressor for Zstd {
             CmprssInput::Reader(reader) => reader.0,
         };
 
-        let mut output_stream: Box<dyn Write + Send> = match &output {
-            CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
-            CmprssOutput::Pipe(stdout) => Box::new(BufWriter::new(stdout)),
-            CmprssOutput::Writer(_) => panic!("Writer output not supported in this context"),
-        };
-
-        // Create a zstd decoder
         let mut decoder = Decoder::new(input_stream)?;
 
-        // Copy the decoded data to the output with progress reporting
-        copy_with_progress(
-            &mut decoder,
-            &mut output_stream,
-            self.progress_args.chunk_size.size_in_bytes,
-            file_size,
-            self.progress_args.progress,
-            &output,
-        )?;
+        if let CmprssOutput::Writer(mut writer) = output {
+            io::copy(&mut decoder, &mut writer)?;
+        } else {
+            let mut output_stream: Box<dyn Write + Send> = match &output {
+                CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
+                CmprssOutput::Pipe(stdout) => Box::new(BufWriter::new(stdout)),
+                CmprssOutput::Writer(_) => unreachable!(),
+            };
+            copy_with_progress(
+                &mut decoder,
+                &mut output_stream,
+                self.progress_args.chunk_size.size_in_bytes,
+                file_size,
+                self.progress_args.progress,
+                &output,
+            )?;
+        }
 
         Ok(())
     }

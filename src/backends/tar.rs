@@ -52,7 +52,13 @@ impl Compressor for Tar {
                 io::copy(&mut temp_file, &mut pipe)?;
                 Ok(())
             }
-            CmprssOutput::Writer(_) => panic!("Writer output not supported in tar compress"),
+            CmprssOutput::Writer(mut writer) => {
+                let mut temp_file = tempfile()?;
+                self.compress_internal(input, Builder::new(&mut temp_file))?;
+                temp_file.seek(SeekFrom::Start(0))?;
+                io::copy(&mut temp_file, &mut writer)?;
+                Ok(())
+            }
         }
     }
 
@@ -97,7 +103,24 @@ impl Compressor for Tar {
                 }
             }
             CmprssOutput::Pipe(_) => cmprss_error("tar extraction to stdout is not supported"),
-            CmprssOutput::Writer(_) => panic!("Writer output not supported in tar extract"),
+            CmprssOutput::Writer(mut writer) => match input {
+                CmprssInput::Path(paths) => {
+                    if paths.len() != 1 {
+                        return cmprss_error("tar extraction expects a single archive file");
+                    }
+                    let mut file = File::open(&paths[0])?;
+                    io::copy(&mut file, &mut writer)?;
+                    Ok(())
+                }
+                CmprssInput::Pipe(mut pipe) => {
+                    io::copy(&mut pipe, &mut writer)?;
+                    Ok(())
+                }
+                CmprssInput::Reader(mut reader) => {
+                    io::copy(&mut reader, &mut writer)?;
+                    Ok(())
+                }
+            },
         }
     }
 }
@@ -131,7 +154,7 @@ impl Tar {
                 temp_file.seek(SeekFrom::Start(0))?;
                 archive.append_file("archive", &mut temp_file)?;
             }
-            CmprssInput::Reader(reader) => {
+            CmprssInput::Reader(_) => {
                 return cmprss_error("Cannot tar a reader input directly");
             }
         }

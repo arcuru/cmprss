@@ -90,8 +90,12 @@ impl Compressor for Zip {
                 io::copy(&mut temp_file, &mut pipe)?;
                 Ok(())
             }
-            CmprssOutput::Writer(_) => {
-                panic!("Writer output not supported in zip compress");
+            CmprssOutput::Writer(mut writer) => {
+                let mut temp_file = tempfile()?;
+                self.compress_to_file(input, &mut temp_file)?;
+                temp_file.seek(SeekFrom::Start(0))?;
+                io::copy(&mut temp_file, &mut writer)?;
+                Ok(())
             }
         }
     }
@@ -141,7 +145,24 @@ impl Compressor for Zip {
                 }
             }
             CmprssOutput::Pipe(_) => cmprss_error("zip extraction to stdout is not supported"),
-            CmprssOutput::Writer(_) => panic!("Writer output not supported in zip extract"),
+            CmprssOutput::Writer(mut writer) => match input {
+                CmprssInput::Path(paths) => {
+                    if paths.len() != 1 {
+                        return cmprss_error("zip extraction expects a single archive file");
+                    }
+                    let mut file = File::open(&paths[0])?;
+                    io::copy(&mut file, &mut writer)?;
+                    Ok(())
+                }
+                CmprssInput::Pipe(mut pipe) => {
+                    io::copy(&mut pipe, &mut writer)?;
+                    Ok(())
+                }
+                CmprssInput::Reader(mut reader) => {
+                    io::copy(&mut reader, &mut writer)?;
+                    Ok(())
+                }
+            },
         }
     }
 }
