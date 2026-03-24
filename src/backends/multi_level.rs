@@ -35,21 +35,13 @@ impl MultiLevelCompressor {
             .join(".")
     }
 
-    /// Create a new compressor instance based on its name
     fn create_compressor(name: &str) -> io::Result<Box<dyn Compressor>> {
-        match name {
-            "tar" => Ok(Box::new(crate::backends::Tar::default())),
-            "gzip" | "gz" => Ok(Box::new(crate::backends::Gzip::default())),
-            "xz" => Ok(Box::new(crate::backends::Xz::default())),
-            "bzip2" | "bz2" => Ok(Box::new(crate::backends::Bzip2::default())),
-            "zip" => Ok(Box::new(crate::backends::Zip::default())),
-            "zstd" | "zst" => Ok(Box::new(crate::backends::Zstd::default())),
-            "lz4" => Ok(Box::new(crate::backends::Lz4::default())),
-            _ => Err(io::Error::new(
+        crate::backends::compressor_from_str(name).ok_or_else(|| {
+            io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!("Unknown compressor type: {}", name),
-            )),
-        }
+            )
+        })
     }
 }
 
