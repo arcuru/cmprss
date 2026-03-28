@@ -5,6 +5,7 @@ multiple-versions = "warn"
 
 [licenses]
 allow = [
+    "AGPL-3.0-or-later",
     "Apache-2.0",
     "BSD-3-Clause",
     "bzip2-1.0.6",
