@@ -150,28 +150,24 @@ impl Drop for PipeWriter {
 
 impl Compressor for Pipeline {
     fn name(&self) -> &str {
-        if let Some(comp) = self.compressors.last() {
-            comp.name()
-        } else {
-            "multi"
-        }
+        self.compressors
+            .last()
+            .expect("pipeline is never empty")
+            .name()
     }
 
     fn extension(&self) -> &str {
-        if let Some(comp) = self.compressors.last() {
-            comp.extension()
-        } else {
-            "multi"
-        }
+        self.compressors
+            .last()
+            .expect("pipeline is never empty")
+            .extension()
     }
 
     fn default_extracted_target(&self) -> ExtractedTarget {
-        // After full extraction, the result is what the innermost compressor produces
-        if let Some(comp) = self.compressors.first() {
-            comp.default_extracted_target()
-        } else {
-            ExtractedTarget::FILE
-        }
+        self.compressors
+            .first()
+            .expect("pipeline is never empty")
+            .default_extracted_target()
     }
 
     fn default_compressed_filename(&self, in_path: &Path) -> String {
@@ -213,12 +209,7 @@ impl Compressor for Pipeline {
     }
 
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
-        if self.compressors.is_empty() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "No compressors in pipeline",
-            ));
-        }
+        debug_assert!(!self.compressors.is_empty(), "pipeline is never empty");
 
         if self.compressors.len() == 1 {
             return self.compressors[0].compress(input, output);
@@ -268,12 +259,7 @@ impl Compressor for Pipeline {
     }
 
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
-        if self.compressors.is_empty() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "No compressors in pipeline for extraction",
-            ));
-        }
+        debug_assert!(!self.compressors.is_empty(), "pipeline is never empty");
 
         if self.compressors.len() == 1 {
             return self.compressors[0].extract(input, output);

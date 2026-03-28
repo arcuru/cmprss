@@ -32,6 +32,3 @@ pub fn compressor_from_str(s: &str) -> Option<Box<dyn Compressor>> {
         _ => None,
     }
 }
-
-/// All known single-format extensions, used for filename detection.
-pub const KNOWN_EXTENSIONS: &[&str] = &["tar", "gz", "xz", "bz2", "zip", "zst", "lz4"];
