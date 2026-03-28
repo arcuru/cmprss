@@ -205,14 +205,12 @@ pub trait Compressor: Send + Sync {
         // If the file has no extension, return the current directory
         if let Some(ext) = in_path.extension() {
             // If the file has the extension for this type, return the filename without the extension
-            if let Some(ext_str) = ext.to_str() {
-                if ext_str == self.extension() {
-                    if let Some(stem) = in_path.file_stem() {
-                        if let Some(stem_str) = stem.to_str() {
-                            return stem_str.to_string();
-                        }
-                    }
-                }
+            if let Some(ext_str) = ext.to_str()
+                && ext_str == self.extension()
+                && let Some(stem) = in_path.file_stem()
+                && let Some(stem_str) = stem.to_str()
+            {
+                return stem_str.to_string();
             }
         }
         "archive".to_string()

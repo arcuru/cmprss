@@ -86,12 +86,12 @@ impl Compressor for Zstd {
 
     /// Compress an input file or pipe to a zstd archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        if let CmprssOutput::Path(out_path) = &output {
-            if out_path.is_dir() {
-                bail!(
-                    "Zstd does not support compressing to a directory. Please specify an output file."
-                );
-            }
+        if let CmprssOutput::Path(out_path) = &output
+            && out_path.is_dir()
+        {
+            bail!(
+                "Zstd does not support compressing to a directory. Please specify an output file."
+            );
         }
         if let CmprssInput::Path(input_paths) = &input {
             for x in input_paths {
@@ -143,12 +143,12 @@ impl Compressor for Zstd {
 
     /// Extract a zstd archive to an output file or pipe
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        if let CmprssOutput::Path(out_path) = &output {
-            if out_path.is_dir() {
-                bail!(
-                    "Zstd does not support extracting to a directory. Please specify an output file."
-                );
-            }
+        if let CmprssOutput::Path(out_path) = &output
+            && out_path.is_dir()
+        {
+            bail!(
+                "Zstd does not support extracting to a directory. Please specify an output file."
+            );
         }
 
         let mut file_size = None;

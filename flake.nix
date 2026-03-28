@@ -233,6 +233,7 @@
             nodePackages.prettier
             shellcheck
             statix
+            typos
 
             # For running tests
             diffutils

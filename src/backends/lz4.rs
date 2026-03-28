@@ -41,12 +41,12 @@ impl Compressor for Lz4 {
 
     /// Compress an input file or pipe to a lz4 archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        if let CmprssOutput::Path(out_path) = &output {
-            if out_path.is_dir() {
-                bail!(
-                    "LZ4 does not support compressing to a directory. Please specify an output file."
-                );
-            }
+        if let CmprssOutput::Path(out_path) = &output
+            && out_path.is_dir()
+        {
+            bail!(
+                "LZ4 does not support compressing to a directory. Please specify an output file."
+            );
         }
         if let CmprssInput::Path(input_paths) = &input {
             for x in input_paths {
@@ -98,12 +98,10 @@ impl Compressor for Lz4 {
 
     /// Extract a lz4 archive to an output file or pipe
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        if let CmprssOutput::Path(out_path) = &output {
-            if out_path.is_dir() {
-                bail!(
-                    "LZ4 does not support extracting to a directory. Please specify an output file."
-                );
-            }
+        if let CmprssOutput::Path(out_path) = &output
+            && out_path.is_dir()
+        {
+            bail!("LZ4 does not support extracting to a directory. Please specify an output file.");
         }
 
         let mut file_size = None;

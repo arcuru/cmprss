@@ -134,10 +134,10 @@ fn guess_from_filenames(
         // Check if output is a directory - this is likely an extraction
         if output.is_dir() {
             // Try to determine compressor from the input file's extension(s)
-            if let Some(input_path) = input.first() {
-                if let Some(guessed_compressor) = get_compressor_from_filename(input_path) {
-                    return (Some(guessed_compressor), Action::Extract);
-                }
+            if let Some(input_path) = input.first()
+                && let Some(guessed_compressor) = get_compressor_from_filename(input_path)
+            {
+                return (Some(guessed_compressor), Action::Extract);
             }
         }
 
@@ -247,33 +247,33 @@ fn get_job(compressor: Option<Box<dyn Compressor>>, common_args: &CommonArgs) ->
 
     // Process the io_list, check if there is an output first
     let mut io_list = common_args.io_list.clone();
-    if output.is_none() {
-        if let Some(possible_output) = common_args.io_list.last() {
-            let path = Path::new(possible_output);
-            if !path.try_exists()? {
-                // Use the given path if it doesn't exist
-                output = Some(path);
-                io_list.pop();
-            } else if path.is_dir() {
-                match action {
-                    Action::Compress => {
-                        // A directory can potentially be a target output location or
-                        // an input, for now assume it is an input.
-                    }
-                    Action::Extract => {
-                        // Can extract to a directory, and it wouldn't make any sense as an input
-                        output = Some(path);
-                        io_list.pop();
-                    }
-                    _ => {
-                        // TODO: don't know if this is an input or output, assume we're compressing this directory
-                        // This does cause problems for inferencing "cat archive.tar | cmprss tar ."
-                        // Probably need to add some special casing
-                    }
-                };
-            } else {
-                // TODO: check for scenarios where we want to append to an existing archive
-            }
+    if output.is_none()
+        && let Some(possible_output) = common_args.io_list.last()
+    {
+        let path = Path::new(possible_output);
+        if !path.try_exists()? {
+            // Use the given path if it doesn't exist
+            output = Some(path);
+            io_list.pop();
+        } else if path.is_dir() {
+            match action {
+                Action::Compress => {
+                    // A directory can potentially be a target output location or
+                    // an input, for now assume it is an input.
+                }
+                Action::Extract => {
+                    // Can extract to a directory, and it wouldn't make any sense as an input
+                    output = Some(path);
+                    io_list.pop();
+                }
+                _ => {
+                    // TODO: don't know if this is an input or output, assume we're compressing this directory
+                    // This does cause problems for inferencing "cat archive.tar | cmprss tar ."
+                    // Probably need to add some special casing
+                }
+            };
+        } else {
+            // TODO: check for scenarios where we want to append to an existing archive
         }
     }
 
@@ -498,6 +498,24 @@ fn command(compressor: Option<Box<dyn Compressor>>, args: &CommonArgs) -> Result
     Ok(())
 }
 
+fn main() {
+    let args = CmprssArgs::parse();
+    match args.format {
+        Some(Format::Tar(a)) => command(Some(Box::new(Tar::new(&a))), &a.common_args),
+        Some(Format::Gzip(a)) => command(Some(Box::new(Gzip::new(&a))), &a.common_args),
+        Some(Format::Xz(a)) => command(Some(Box::new(Xz::new(&a))), &a.common_args),
+        Some(Format::Bzip2(a)) => command(Some(Box::new(Bzip2::new(&a))), &a.common_args),
+        Some(Format::Zip(a)) => command(Some(Box::new(Zip::new(&a))), &a.common_args),
+        Some(Format::Zstd(a)) => command(Some(Box::new(Zstd::new(&a))), &a.common_args),
+        Some(Format::Lz4(a)) => command(Some(Box::new(Lz4::new(&a))), &a.common_args),
+        _ => command(None, &args.base_args),
+    }
+    .unwrap_or_else(|e| {
+        eprintln!("ERROR(cmprss): {}", e);
+        std::process::exit(1);
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -600,22 +618,4 @@ mod tests {
         assert_eq!(compressor_extension("file.gz"), Some("gz".into()));
         assert_eq!(compressor_extension("file.tar"), Some("tar".into()));
     }
-}
-
-fn main() {
-    let args = CmprssArgs::parse();
-    match args.format {
-        Some(Format::Tar(a)) => command(Some(Box::new(Tar::new(&a))), &a.common_args),
-        Some(Format::Gzip(a)) => command(Some(Box::new(Gzip::new(&a))), &a.common_args),
-        Some(Format::Xz(a)) => command(Some(Box::new(Xz::new(&a))), &a.common_args),
-        Some(Format::Bzip2(a)) => command(Some(Box::new(Bzip2::new(&a))), &a.common_args),
-        Some(Format::Zip(a)) => command(Some(Box::new(Zip::new(&a))), &a.common_args),
-        Some(Format::Zstd(a)) => command(Some(Box::new(Zstd::new(&a))), &a.common_args),
-        Some(Format::Lz4(a)) => command(Some(Box::new(Lz4::new(&a))), &a.common_args),
-        _ => command(None, &args.base_args),
-    }
-    .unwrap_or_else(|e| {
-        eprintln!("ERROR(cmprss): {}", e);
-        std::process::exit(1);
-    });
 }

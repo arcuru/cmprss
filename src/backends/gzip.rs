@@ -67,12 +67,12 @@ impl Compressor for Gzip {
 
     /// Compress an input file or pipe to a gzip archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        if let CmprssOutput::Path(out_path) = &output {
-            if out_path.is_dir() {
-                bail!(
-                    "Gzip does not support compressing to a directory. Please specify an output file."
-                );
-            }
+        if let CmprssOutput::Path(out_path) = &output
+            && out_path.is_dir()
+        {
+            bail!(
+                "Gzip does not support compressing to a directory. Please specify an output file."
+            );
         }
         if let CmprssInput::Path(input_paths) = &input {
             for x in input_paths {
