@@ -558,6 +558,110 @@ fn command(compressor: Option<Box<dyn Compressor>>, args: &CommonArgs) -> Result
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn compressor_name(path: &str) -> Option<String> {
+        get_compressor_from_filename(Path::new(path)).map(|c| c.name().to_string())
+    }
+
+    fn compressor_extension(path: &str) -> Option<String> {
+        get_compressor_from_filename(Path::new(path)).map(|c| c.extension().to_string())
+    }
+
+    #[test]
+    fn test_single_extension() {
+        assert_eq!(compressor_name("file.gz"), Some("gzip".into()));
+        assert_eq!(compressor_name("file.xz"), Some("xz".into()));
+        assert_eq!(compressor_name("file.bz2"), Some("bzip2".into()));
+        assert_eq!(compressor_name("file.zst"), Some("zstd".into()));
+        assert_eq!(compressor_name("file.lz4"), Some("lz4".into()));
+        assert_eq!(compressor_name("file.tar"), Some("tar".into()));
+        assert_eq!(compressor_name("file.zip"), Some("zip".into()));
+    }
+
+    #[test]
+    fn test_multi_extension() {
+        assert_eq!(compressor_name("archive.tar.gz"), Some("gzip".into()));
+        assert_eq!(compressor_name("archive.tar.xz"), Some("xz".into()));
+        assert_eq!(compressor_name("archive.tar.bz2"), Some("bzip2".into()));
+        assert_eq!(compressor_name("archive.tar.zst"), Some("zstd".into()));
+    }
+
+    #[test]
+    fn test_unknown_middle_extension() {
+        // "b" is not a compressor, so only tar.gz should be detected
+        assert_eq!(compressor_name("a.b.tar.gz"), Some("gzip".into()));
+        assert_eq!(compressor_name("report.2024.tar.gz"), Some("gzip".into()));
+    }
+
+    #[test]
+    fn test_no_recognized_extension() {
+        assert_eq!(compressor_name("file.txt"), None);
+        assert_eq!(compressor_name("file.pdf"), None);
+        assert_eq!(compressor_name("file"), None);
+    }
+
+    #[test]
+    fn test_default_filenames_single_pipeline() {
+        let c = get_compressor_from_filename(Path::new("file.gz")).unwrap();
+        assert_eq!(
+            c.default_compressed_filename(Path::new("data.txt")),
+            "data.txt.gz"
+        );
+        assert_eq!(c.default_extracted_filename(Path::new("data.gz")), "data");
+    }
+
+    #[test]
+    fn test_default_filenames_multi_pipeline() {
+        let c = get_compressor_from_filename(Path::new("archive.tar.gz")).unwrap();
+        assert_eq!(
+            c.default_compressed_filename(Path::new("data")),
+            "data.tar.gz"
+        );
+        // tar.gz extracts to a directory, so extracted filename is "."
+        assert_eq!(c.default_extracted_filename(Path::new("data.tar.gz")), ".");
+    }
+
+    #[test]
+    fn test_is_archive_single_pipeline() {
+        let c = get_compressor_from_filename(Path::new("file.gz")).unwrap();
+        assert!(c.is_archive(Path::new("test.gz")));
+        assert!(!c.is_archive(Path::new("test.xz")));
+    }
+
+    #[test]
+    fn test_is_archive_multi_pipeline() {
+        let c = get_compressor_from_filename(Path::new("archive.tar.gz")).unwrap();
+        assert!(c.is_archive(Path::new("foo.tar.gz")));
+        assert!(!c.is_archive(Path::new("foo.gz")));
+    }
+
+    #[test]
+    fn test_extracted_target_single_pipeline() {
+        let gz = get_compressor_from_filename(Path::new("file.gz")).unwrap();
+        assert_eq!(gz.default_extracted_target(), ExtractedTarget::FILE);
+
+        let tar = get_compressor_from_filename(Path::new("file.tar")).unwrap();
+        assert_eq!(tar.default_extracted_target(), ExtractedTarget::DIRECTORY);
+    }
+
+    #[test]
+    fn test_extracted_target_multi_pipeline() {
+        // tar.gz: innermost is tar, which extracts to directory
+        let c = get_compressor_from_filename(Path::new("archive.tar.gz")).unwrap();
+        assert_eq!(c.default_extracted_target(), ExtractedTarget::DIRECTORY);
+    }
+
+    #[test]
+    fn test_single_extension_returns_correct_extension() {
+        assert_eq!(compressor_extension("file.gz"), Some("gz".into()));
+        assert_eq!(compressor_extension("file.tar"), Some("tar".into()));
+    }
+}
+
 fn main() {
     let args = CmprssArgs::parse();
     match args.format {
