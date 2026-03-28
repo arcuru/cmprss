@@ -15,12 +15,6 @@
       inputs.rust-analyzer-src.follows = "";
     };
 
-    advisory-db = {
-      # Rust dependency security advisories
-      url = "github:rustsec/advisory-db";
-      flake = false;
-    };
-
     # Flake helper for better organization with modules.
     flake-parts = {
       url = "github:hercules-ci/flake-parts";
@@ -116,11 +110,11 @@
           # Run tests with cargo-nextest
           test = craneLib.cargoNextest commonArgs;
 
-          # Audit dependencies
-          # This only runs when Cargo.lock files change
-          audit = craneLib.cargoAudit (commonArgs
+          # Audit dependencies, check licenses, and detect duplicate crates
+          deny = craneLib.cargoDeny (commonArgs
             // {
-              inherit (inputs) advisory-db;
+              # advisories excluded: needs network access (blocked by nix sandbox)
+              cargoDenyChecks = "bans licenses sources";
             });
         };
 
@@ -128,7 +122,7 @@
           inherit cmprss;
           # Build almost every package in checks, with exceptions:
           # - coverage: It requires a full rebuild, and only needs to be run occasionally
-          inherit (self.packages.${system}) clippy doc fmt test audit;
+          inherit (self.packages.${system}) clippy doc fmt test deny;
         };
 
         # This also sets up `nix fmt` to run all formatters
