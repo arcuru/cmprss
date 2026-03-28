@@ -11,6 +11,8 @@ A compression multi-tool for the command line.
 Replace `tar` with something you can remember.
 [Relevant XKCD](https://xkcd.com/1168/).
 
+All compression libraries are statically compiled in, so no runtime dependencies required.
+
 Currently supports:
 
 - bzip2
