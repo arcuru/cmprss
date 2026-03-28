@@ -1,4 +1,5 @@
 use crate::utils::*;
+use anyhow::bail;
 use clap::Args;
 use std::fs::File;
 use std::io::{self, Seek, SeekFrom, Write};
@@ -22,11 +23,7 @@ impl Zip {
         Zip {}
     }
 
-    fn compress_to_file<W: Write + Seek>(
-        &self,
-        input: CmprssInput,
-        writer: W,
-    ) -> Result<(), io::Error> {
+    fn compress_to_file<W: Write + Seek>(&self, input: CmprssInput, writer: W) -> Result {
         let mut zip_writer = ZipWriter::new(writer);
         let options = FileOptions::<()>::default().compression_method(CompressionMethod::Deflated);
 
@@ -43,7 +40,7 @@ impl Zip {
                         let base = path.parent().unwrap_or(&path);
                         add_directory(&mut zip_writer, base, &path)?;
                     } else {
-                        return cmprss_error("unsupported file type for zip compression");
+                        bail!("unsupported file type for zip compression");
                     }
                 }
             }
@@ -53,7 +50,7 @@ impl Zip {
                 io::copy(&mut pipe, &mut zip_writer)?;
             }
             CmprssInput::Reader(_) => {
-                return cmprss_error("Cannot zip a reader input");
+                bail!("Cannot zip a reader input");
             }
         }
 
@@ -72,7 +69,7 @@ impl Compressor for Zip {
         ExtractedTarget::DIRECTORY
     }
 
-    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         match output {
             CmprssOutput::Path(ref path) => {
                 let file = File::create(path)?;
@@ -100,24 +97,24 @@ impl Compressor for Zip {
         }
     }
 
-    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         match output {
             CmprssOutput::Path(ref out_dir) => {
                 // Create the output directory if it doesn't exist
                 if !out_dir.exists() {
                     std::fs::create_dir_all(out_dir)?;
                 } else if !out_dir.is_dir() {
-                    return cmprss_error("zip extraction output must be a directory");
+                    bail!("zip extraction output must be a directory");
                 }
 
                 match input {
                     CmprssInput::Path(paths) => {
                         if paths.len() != 1 {
-                            return cmprss_error("zip extraction expects a single archive file");
+                            bail!("zip extraction expects a single archive file");
                         }
                         let file = File::open(&paths[0])?;
                         let mut archive = ZipArchive::new(file)?;
-                        archive.extract(out_dir).map_err(io::Error::other)
+                        Ok(archive.extract(out_dir)?)
                     }
                     CmprssInput::Pipe(mut pipe) => {
                         // Create a temporary file to store the zip content
@@ -131,18 +128,20 @@ impl Compressor for Zip {
 
                         // Extract from the temporary file
                         let mut archive = ZipArchive::new(temp_file)?;
-                        archive.extract(out_dir).map_err(io::Error::other)
+                        Ok(archive.extract(out_dir)?)
                     }
-                    CmprssInput::Reader(_) => cmprss_error(
-                        "Cannot extract from a reader input for zip (requires seekable input)",
-                    ),
+                    CmprssInput::Reader(_) => {
+                        bail!(
+                            "Cannot extract from a reader input for zip (requires seekable input)"
+                        )
+                    }
                 }
             }
-            CmprssOutput::Pipe(_) => cmprss_error("zip extraction to stdout is not supported"),
+            CmprssOutput::Pipe(_) => bail!("zip extraction to stdout is not supported"),
             CmprssOutput::Writer(mut writer) => match input {
                 CmprssInput::Path(paths) => {
                     if paths.len() != 1 {
-                        return cmprss_error("zip extraction expects a single archive file");
+                        bail!("zip extraction expects a single archive file");
                     }
                     let mut file = File::open(&paths[0])?;
                     io::copy(&mut file, &mut writer)?;
@@ -161,11 +160,7 @@ impl Compressor for Zip {
     }
 }
 
-fn add_directory<W: Write + Seek>(
-    zip: &mut ZipWriter<W>,
-    base: &Path,
-    path: &Path,
-) -> Result<(), io::Error> {
+fn add_directory<W: Write + Seek>(zip: &mut ZipWriter<W>, base: &Path, path: &Path) -> Result {
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
         let entry_path = entry.path();
@@ -211,14 +206,14 @@ mod tests {
 
     /// Test the default compression level
     #[test]
-    fn test_zip_default_compression() -> Result<(), io::Error> {
+    fn test_zip_default_compression() -> Result {
         let compressor = Zip::default();
         test_compression(&compressor)
     }
 
     /// Test zip-specific functionality: directory handling
     #[test]
-    fn test_directory_handling() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_directory_handling() -> Result {
         let compressor = Zip::default();
         let dir = assert_fs::TempDir::new()?;
         let file_path = dir.child("file.txt");

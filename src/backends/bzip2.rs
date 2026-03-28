@@ -2,9 +2,10 @@ use crate::{
     progress::{ProgressArgs, copy_with_progress},
     utils::{
         CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
-        ExtractedTarget, LevelArgs,
+        ExtractedTarget, LevelArgs, Result,
     },
 };
+use anyhow::bail;
 use bzip2::Compression;
 use bzip2::write::{BzDecoder, BzEncoder};
 use clap::Args;
@@ -93,15 +94,12 @@ impl Compressor for Bzip2 {
     }
 
     /// Compress an input file or pipe to a bz2 archive
-    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         let mut file_size = None;
         let mut input_stream = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() > 1 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Multiple input files not supported for bzip2",
-                    ));
+                    bail!("Multiple input files not supported for bzip2");
                 }
                 let path = &paths[0];
                 file_size = Some(std::fs::metadata(path)?.len());
@@ -134,15 +132,12 @@ impl Compressor for Bzip2 {
     }
 
     /// Extract a bz2 archive to a file or pipe
-    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         let mut file_size = None;
         let mut input_stream = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() > 1 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Multiple input files not supported for bzip2 extraction",
-                    ));
+                    bail!("Multiple input files not supported for bzip2 extraction");
                 }
                 let path = &paths[0];
                 file_size = Some(std::fs::metadata(path)?.len());
@@ -203,14 +198,14 @@ mod tests {
 
     /// Test the default compression level
     #[test]
-    fn test_bzip2_default_compression() -> Result<(), io::Error> {
+    fn test_bzip2_default_compression() -> Result {
         let compressor = Bzip2::default();
         test_compression(&compressor)
     }
 
     /// Test fast compression level
     #[test]
-    fn test_bzip2_fast_compression() -> Result<(), io::Error> {
+    fn test_bzip2_fast_compression() -> Result {
         let fast_compressor = Bzip2 {
             level: 1,
             progress_args: ProgressArgs::default(),
@@ -220,7 +215,7 @@ mod tests {
 
     /// Test best compression level
     #[test]
-    fn test_bzip2_best_compression() -> Result<(), io::Error> {
+    fn test_bzip2_best_compression() -> Result {
         let best_compressor = Bzip2 {
             level: 9,
             progress_args: ProgressArgs::default(),

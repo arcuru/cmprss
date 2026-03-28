@@ -2,6 +2,7 @@ use crate::{
     progress::{ProgressArgs, copy_with_progress},
     utils::*,
 };
+use anyhow::bail;
 use clap::Args;
 use std::{
     fs::File,
@@ -60,15 +61,12 @@ impl Compressor for Xz {
         "xz"
     }
 
-    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         let mut file_size = None;
         let mut input_stream = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() > 1 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Multiple input files not supported for xz",
-                    ));
+                    bail!("Multiple input files not supported for xz");
                 }
                 let path = &paths[0];
                 file_size = Some(std::fs::metadata(path)?.len());
@@ -101,15 +99,12 @@ impl Compressor for Xz {
         Ok(())
     }
 
-    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         let mut file_size = None;
         let input_stream: Box<dyn Read + Send> = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() > 1 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Multiple input files not supported for xz extraction",
-                    ));
+                    bail!("Multiple input files not supported for xz extraction");
                 }
                 let path = &paths[0];
                 file_size = Some(std::fs::metadata(path)?.len());
@@ -156,14 +151,14 @@ mod tests {
 
     /// Test the default compression level
     #[test]
-    fn test_xz_default_compression() -> Result<(), io::Error> {
+    fn test_xz_default_compression() -> Result {
         let compressor = Xz::default();
         test_compression(&compressor)
     }
 
     /// Test fast compression level
     #[test]
-    fn test_xz_fast_compression() -> Result<(), io::Error> {
+    fn test_xz_fast_compression() -> Result {
         let fast_compressor = Xz {
             level: 1,
             progress_args: ProgressArgs::default(),
@@ -173,7 +168,7 @@ mod tests {
 
     /// Test best compression level
     #[test]
-    fn test_xz_best_compression() -> Result<(), io::Error> {
+    fn test_xz_best_compression() -> Result {
         let best_compressor = Xz {
             level: 9,
             progress_args: ProgressArgs::default(),

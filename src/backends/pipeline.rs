@@ -1,4 +1,5 @@
 use crate::utils::*;
+use anyhow::anyhow;
 use std::io::{self, Read, Write};
 use std::path::Path;
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -17,11 +18,11 @@ impl Pipeline {
     }
 
     /// Create a new Pipeline from compressor type names
-    pub fn from_names(compressor_names: &[String]) -> io::Result<Self> {
+    pub fn from_names(compressor_names: &[String]) -> Result<Self> {
         let compressors = compressor_names
             .iter()
             .map(|name| Self::create_compressor(name))
-            .collect::<io::Result<Vec<_>>>()?;
+            .collect::<Result<Vec<_>>>()?;
         Ok(Self { compressors })
     }
 
@@ -34,13 +35,9 @@ impl Pipeline {
             .join(".")
     }
 
-    fn create_compressor(name: &str) -> io::Result<Box<dyn Compressor>> {
-        crate::backends::compressor_from_str(name).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("Unknown compressor type: {}", name),
-            )
-        })
+    fn create_compressor(name: &str) -> Result<Box<dyn Compressor>> {
+        crate::backends::compressor_from_str(name)
+            .ok_or_else(|| anyhow!("Unknown compressor type: {}", name))
     }
 }
 
@@ -208,7 +205,7 @@ impl Compressor for Pipeline {
         file_name.ends_with(&format!(".{}", self.format_chain()))
     }
 
-    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         debug_assert!(!self.compressors.is_empty(), "pipeline is never empty");
 
         if self.compressors.len() == 1 {
@@ -219,7 +216,7 @@ impl Compressor for Pipeline {
             .compressors
             .iter()
             .map(|c| Self::create_compressor(c.name()))
-            .collect::<io::Result<Vec<_>>>()?;
+            .collect::<Result<Vec<_>>>()?;
 
         let mut handles = Vec::new();
         let mut current_thread_input = input; // Consumed by the first (innermost) compressor
@@ -253,12 +250,12 @@ impl Compressor for Pipeline {
         for handle in handles {
             handle
                 .join()
-                .map_err(|_| io::Error::other("Compression thread panicked"))??;
+                .map_err(|_| anyhow!("Compression thread panicked"))??;
         }
         Ok(())
     }
 
-    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         debug_assert!(!self.compressors.is_empty(), "pipeline is never empty");
 
         if self.compressors.len() == 1 {
@@ -270,7 +267,7 @@ impl Compressor for Pipeline {
             .iter()
             .rev()
             .map(|c| Self::create_compressor(c.name()))
-            .collect::<io::Result<Vec<_>>>()?;
+            .collect::<Result<Vec<_>>>()?;
 
         let mut handles = Vec::new();
         let mut current_thread_input = input; // Consumed by the first (outermost) extractor
@@ -321,7 +318,7 @@ impl Compressor for Pipeline {
         for handle in handles {
             handle
                 .join()
-                .map_err(|_| io::Error::other("Extraction thread panicked"))??;
+                .map_err(|_| anyhow!("Extraction thread panicked"))??;
         }
         Ok(())
     }
@@ -334,7 +331,7 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn test_pipeline_compression() -> Result<(), io::Error> {
+    fn test_pipeline_compression() -> Result {
         let temp_dir = tempdir()?;
 
         let test_content = "This is a test file for pipeline compression";

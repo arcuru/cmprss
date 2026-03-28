@@ -6,6 +6,8 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+pub type Result<T = ()> = anyhow::Result<T>;
+
 /// Enum to represent whether a compressor extracts to a file or directory by default
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExtractedTarget {
@@ -126,7 +128,7 @@ impl Default for CompressionLevel {
 impl FromStr for CompressionLevel {
     type Err = &'static str;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         // Check for an int
         if let Ok(level) = s.parse::<i32>() {
             return Ok(CompressionLevel { level });
@@ -216,19 +218,15 @@ pub trait Compressor: Send + Sync {
         "archive".to_string()
     }
 
-    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error>;
+    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result;
 
-    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error>;
+    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result;
 }
 
 impl fmt::Debug for dyn Compressor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Compressor {{ name: {} }}", self.name())
     }
-}
-
-pub fn cmprss_error(message: &str) -> Result<(), io::Error> {
-    Err(io::Error::other(message))
 }
 
 /// Wrapper for Read + Send to allow Debug
@@ -288,7 +286,6 @@ pub enum CmprssOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io;
     use std::path::Path;
 
     /// A simple implementation of the Compressor trait for testing
@@ -301,13 +298,11 @@ mod tests {
 
         // We'll use the default implementation for extension() and other methods
 
-        fn compress(&self, _: CmprssInput, _: CmprssOutput) -> Result<(), io::Error> {
-            // Return success for testing purposes
+        fn compress(&self, _: CmprssInput, _: CmprssOutput) -> Result {
             Ok(())
         }
 
-        fn extract(&self, _: CmprssInput, _: CmprssOutput) -> Result<(), io::Error> {
-            // Return success for testing purposes
+        fn extract(&self, _: CmprssInput, _: CmprssOutput) -> Result {
             Ok(())
         }
     }
@@ -324,11 +319,11 @@ mod tests {
             "cst"
         }
 
-        fn compress(&self, _: CmprssInput, _: CmprssOutput) -> Result<(), io::Error> {
+        fn compress(&self, _: CmprssInput, _: CmprssOutput) -> Result {
             Ok(())
         }
 
-        fn extract(&self, _: CmprssInput, _: CmprssOutput) -> Result<(), io::Error> {
+        fn extract(&self, _: CmprssInput, _: CmprssOutput) -> Result {
             Ok(())
         }
     }
@@ -429,13 +424,6 @@ mod tests {
         let default_level = CompressionLevel::default();
         let validator = DefaultCompressionValidator;
         assert_eq!(default_level.level, validator.default_level());
-    }
-
-    #[test]
-    fn test_cmprss_error() {
-        let result = cmprss_error("test error");
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().to_string(), "test error");
     }
 
     #[test]

@@ -1,10 +1,9 @@
 use crate::utils::ExtractedTarget;
 use std::fs;
-use std::io;
 use std::path::Path;
 use tempfile::tempdir;
 
-use crate::utils::{CmprssInput, CmprssOutput, CompressionLevelValidator, Compressor};
+use crate::utils::{CmprssInput, CmprssOutput, CompressionLevelValidator, Compressor, Result};
 
 /// Test basic trait functionality that should be common across all compressors
 pub fn test_compressor_interface<T: Compressor>(
@@ -66,10 +65,7 @@ pub fn test_compressor_interface<T: Compressor>(
 }
 
 /// Test compression and extraction functionality with a simple string
-pub fn test_compressor_roundtrip<T: Compressor>(
-    compressor: &T,
-    test_data: &str,
-) -> Result<(), io::Error> {
+pub fn test_compressor_roundtrip<T: Compressor>(compressor: &T, test_data: &str) -> Result {
     let temp_dir = tempdir().expect("Failed to create temp dir");
 
     // Create test file
@@ -107,7 +103,7 @@ pub fn test_compressor_roundtrip<T: Compressor>(
 }
 
 /// Test compression and extraction with different content sizes
-pub fn test_compression<T: Compressor>(compressor: &T) -> Result<(), io::Error> {
+pub fn test_compression<T: Compressor>(compressor: &T) -> Result {
     // Test with empty content
     test_compressor_roundtrip(compressor, "")?;
 
@@ -126,7 +122,7 @@ pub fn run_compressor_tests<T: Compressor>(
     compressor: &T,
     expected_name: &str,
     expected_extension: Option<&str>,
-) -> Result<(), io::Error> {
+) -> Result {
     // Test interface methods
     test_compressor_interface(compressor, expected_name, expected_extension);
 

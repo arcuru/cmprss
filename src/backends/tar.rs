@@ -1,5 +1,6 @@
 extern crate tar;
 
+use anyhow::bail;
 use clap::Args;
 use std::fs::File;
 use std::io::{self, Seek, SeekFrom, Write};
@@ -34,7 +35,7 @@ impl Compressor for Tar {
         ExtractedTarget::DIRECTORY
     }
 
-    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         match output {
             CmprssOutput::Path(path) => {
                 let file = File::create(path)?;
@@ -62,24 +63,24 @@ impl Compressor for Tar {
         }
     }
 
-    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         match output {
             CmprssOutput::Path(ref out_dir) => {
                 // Create the output directory if it doesn't exist
                 if !out_dir.exists() {
                     std::fs::create_dir_all(out_dir)?;
                 } else if !out_dir.is_dir() {
-                    return cmprss_error("tar extraction output must be a directory");
+                    bail!("tar extraction output must be a directory");
                 }
 
                 match input {
                     CmprssInput::Path(paths) => {
                         if paths.len() != 1 {
-                            return cmprss_error("tar extraction expects a single archive file");
+                            bail!("tar extraction expects a single archive file");
                         }
                         let file = File::open(&paths[0])?;
                         let mut archive = Archive::new(file);
-                        archive.unpack(out_dir)
+                        Ok(archive.unpack(out_dir)?)
                     }
                     CmprssInput::Pipe(mut pipe) => {
                         // Create a temporary file to store the tar content
@@ -93,7 +94,7 @@ impl Compressor for Tar {
 
                         // Extract from the temporary file
                         let mut archive = Archive::new(temp_file);
-                        archive.unpack(out_dir)
+                        Ok(archive.unpack(out_dir)?)
                     }
                     CmprssInput::Reader(reader) => {
                         let mut archive = Archive::new(reader.0);
@@ -102,11 +103,11 @@ impl Compressor for Tar {
                     }
                 }
             }
-            CmprssOutput::Pipe(_) => cmprss_error("tar extraction to stdout is not supported"),
+            CmprssOutput::Pipe(_) => bail!("tar extraction to stdout is not supported"),
             CmprssOutput::Writer(mut writer) => match input {
                 CmprssInput::Path(paths) => {
                     if paths.len() != 1 {
-                        return cmprss_error("tar extraction expects a single archive file");
+                        bail!("tar extraction expects a single archive file");
                     }
                     let mut file = File::open(&paths[0])?;
                     io::copy(&mut file, &mut writer)?;
@@ -127,11 +128,7 @@ impl Compressor for Tar {
 
 impl Tar {
     /// Internal compress helper
-    fn compress_internal<W: Write>(
-        &self,
-        input: CmprssInput,
-        mut archive: Builder<W>,
-    ) -> Result<(), io::Error> {
+    fn compress_internal<W: Write>(&self, input: CmprssInput, mut archive: Builder<W>) -> Result {
         match input {
             CmprssInput::Path(paths) => {
                 for path in paths {
@@ -143,7 +140,7 @@ impl Tar {
                     } else if path.is_dir() {
                         archive.append_dir_all(path.file_name().unwrap(), path.as_path())?;
                     } else {
-                        return cmprss_error("unsupported file type for tar compression");
+                        bail!("unsupported file type for tar compression");
                     }
                 }
             }
@@ -155,10 +152,10 @@ impl Tar {
                 archive.append_file("archive", &mut temp_file)?;
             }
             CmprssInput::Reader(_) => {
-                return cmprss_error("Cannot tar a reader input directly");
+                bail!("Cannot tar a reader input directly");
             }
         }
-        archive.finish()
+        Ok(archive.finish()?)
     }
 }
 
@@ -179,14 +176,14 @@ mod tests {
 
     /// Test the default compression level
     #[test]
-    fn test_tar_default_compression() -> Result<(), io::Error> {
+    fn test_tar_default_compression() -> Result {
         let compressor = Tar::default();
         test_compression(&compressor)
     }
 
     /// Test tar-specific functionality: directory handling
     #[test]
-    fn test_directory_handling() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_directory_handling() -> Result {
         let compressor = Tar::default();
         let dir = assert_fs::TempDir::new()?;
         let file_path = dir.child("file.txt");

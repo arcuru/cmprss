@@ -1,5 +1,6 @@
 use crate::progress::{ProgressArgs, copy_with_progress};
-use crate::utils::{CmprssInput, CmprssOutput, CommonArgs, Compressor, cmprss_error};
+use crate::utils::*;
+use anyhow::bail;
 use clap::Args;
 use lz4_flex::frame::{FrameDecoder, FrameEncoder};
 use std::fs::File;
@@ -39,19 +40,19 @@ impl Compressor for Lz4 {
     }
 
     /// Compress an input file or pipe to a lz4 archive
-    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         if let CmprssOutput::Path(out_path) = &output {
             if out_path.is_dir() {
-                return cmprss_error(
-                    "LZ4 does not support compressing to a directory. Please specify an output file.",
+                bail!(
+                    "LZ4 does not support compressing to a directory. Please specify an output file."
                 );
             }
         }
         if let CmprssInput::Path(input_paths) = &input {
             for x in input_paths {
                 if x.is_dir() {
-                    return cmprss_error(
-                        "LZ4 does not support compressing a directory. Please specify only files.",
+                    bail!(
+                        "LZ4 does not support compressing a directory. Please specify only files."
                     );
                 }
             }
@@ -60,10 +61,7 @@ impl Compressor for Lz4 {
         let mut input_stream: Box<dyn Read + Send> = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() > 1 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Multiple input files not supported for lz4",
-                    ));
+                    bail!("Multiple input files not supported for lz4");
                 }
                 let path = &paths[0];
                 file_size = Some(std::fs::metadata(path)?.len());
@@ -99,11 +97,11 @@ impl Compressor for Lz4 {
     }
 
     /// Extract a lz4 archive to an output file or pipe
-    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         if let CmprssOutput::Path(out_path) = &output {
             if out_path.is_dir() {
-                return cmprss_error(
-                    "LZ4 does not support extracting to a directory. Please specify an output file.",
+                bail!(
+                    "LZ4 does not support extracting to a directory. Please specify an output file."
                 );
             }
         }
@@ -112,10 +110,7 @@ impl Compressor for Lz4 {
         let input_stream: Box<dyn Read + Send> = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() > 1 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Multiple input files not supported for lz4 extraction",
-                    ));
+                    bail!("Multiple input files not supported for lz4 extraction");
                 }
                 let path = &paths[0];
                 file_size = Some(std::fs::metadata(path)?.len());
@@ -164,7 +159,7 @@ mod tests {
 
     /// Test the default compression level
     #[test]
-    fn test_lz4_default_compression() -> Result<(), io::Error> {
+    fn test_lz4_default_compression() -> Result {
         let compressor = Lz4::default();
         test_compression(&compressor)
     }

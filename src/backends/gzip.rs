@@ -1,5 +1,6 @@
 use crate::progress::{ProgressArgs, copy_with_progress};
 use crate::utils::*;
+use anyhow::bail;
 use clap::Args;
 use flate2::write::GzEncoder;
 use flate2::{Compression, read::GzDecoder};
@@ -65,19 +66,19 @@ impl Compressor for Gzip {
     }
 
     /// Compress an input file or pipe to a gzip archive
-    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         if let CmprssOutput::Path(out_path) = &output {
             if out_path.is_dir() {
-                return cmprss_error(
-                    "Gzip does not support compressing to a directory. Please specify an output file.",
+                bail!(
+                    "Gzip does not support compressing to a directory. Please specify an output file."
                 );
             }
         }
         if let CmprssInput::Path(input_paths) = &input {
             for x in input_paths {
                 if x.is_dir() {
-                    return cmprss_error(
-                        "Gzip does not support compressing a directory. Please specify only files.",
+                    bail!(
+                        "Gzip does not support compressing a directory. Please specify only files."
                     );
                 }
             }
@@ -86,10 +87,7 @@ impl Compressor for Gzip {
         let mut input_stream: Box<dyn Read + Send> = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() > 1 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Multiple input files not supported for gzip",
-                    ));
+                    bail!("Multiple input files not supported for gzip");
                 }
                 let path = &paths[0];
                 file_size = Some(std::fs::metadata(path)?.len());
@@ -128,15 +126,12 @@ impl Compressor for Gzip {
     }
 
     /// Extract a gzip archive
-    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         let mut file_size = None;
         let input_stream: Box<dyn Read + Send> = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() > 1 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Multiple input files not supported for gzip extraction",
-                    ));
+                    bail!("Multiple input files not supported for gzip extraction");
                 }
                 let path = &paths[0];
                 file_size = Some(std::fs::metadata(path)?.len());
@@ -187,14 +182,14 @@ mod tests {
 
     /// Test the default compression level
     #[test]
-    fn test_gzip_default_compression() -> Result<(), io::Error> {
+    fn test_gzip_default_compression() -> Result {
         let compressor = Gzip::default();
         test_compression(&compressor)
     }
 
     /// Test fast compression level
     #[test]
-    fn test_gzip_fast_compression() -> Result<(), io::Error> {
+    fn test_gzip_fast_compression() -> Result {
         let fast_compressor = Gzip {
             compression_level: 1,
             progress_args: ProgressArgs::default(),
@@ -204,7 +199,7 @@ mod tests {
 
     /// Test best compression level
     #[test]
-    fn test_gzip_best_compression() -> Result<(), io::Error> {
+    fn test_gzip_best_compression() -> Result {
         let best_compressor = Gzip {
             compression_level: 9,
             progress_args: ProgressArgs::default(),
@@ -214,7 +209,7 @@ mod tests {
 
     /// Test for gzip-specific behavior: handling of concatenated gzip archives
     #[test]
-    fn test_concatenated_gzip() -> Result<(), io::Error> {
+    fn test_concatenated_gzip() -> Result {
         let compressor = Gzip::default();
         let temp_dir = tempdir().expect("Failed to create temp dir");
 

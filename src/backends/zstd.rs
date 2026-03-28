@@ -1,8 +1,6 @@
 use crate::progress::{ProgressArgs, copy_with_progress};
-use crate::utils::{
-    CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor, LevelArgs,
-    cmprss_error,
-};
+use crate::utils::*;
+use anyhow::bail;
 use clap::Args;
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read, Write};
@@ -87,19 +85,19 @@ impl Compressor for Zstd {
     }
 
     /// Compress an input file or pipe to a zstd archive
-    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+    fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         if let CmprssOutput::Path(out_path) = &output {
             if out_path.is_dir() {
-                return cmprss_error(
-                    "Zstd does not support compressing to a directory. Please specify an output file.",
+                bail!(
+                    "Zstd does not support compressing to a directory. Please specify an output file."
                 );
             }
         }
         if let CmprssInput::Path(input_paths) = &input {
             for x in input_paths {
                 if x.is_dir() {
-                    return cmprss_error(
-                        "Zstd does not support compressing a directory. Please specify only files.",
+                    bail!(
+                        "Zstd does not support compressing a directory. Please specify only files."
                     );
                 }
             }
@@ -108,10 +106,7 @@ impl Compressor for Zstd {
         let mut input_stream: Box<dyn Read + Send> = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() > 1 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Multiple input files not supported for zstd",
-                    ));
+                    bail!("Multiple input files not supported for zstd");
                 }
                 let path = &paths[0];
                 file_size = Some(std::fs::metadata(path)?.len());
@@ -147,11 +142,11 @@ impl Compressor for Zstd {
     }
 
     /// Extract a zstd archive to an output file or pipe
-    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
+    fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         if let CmprssOutput::Path(out_path) = &output {
             if out_path.is_dir() {
-                return cmprss_error(
-                    "Zstd does not support extracting to a directory. Please specify an output file.",
+                bail!(
+                    "Zstd does not support extracting to a directory. Please specify an output file."
                 );
             }
         }
@@ -160,10 +155,7 @@ impl Compressor for Zstd {
         let input_stream: Box<dyn Read + Send> = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() > 1 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Multiple input files not supported for zstd extraction",
-                    ));
+                    bail!("Multiple input files not supported for zstd extraction");
                 }
                 let path = &paths[0];
                 file_size = Some(std::fs::metadata(path)?.len());
@@ -211,14 +203,14 @@ mod tests {
 
     /// Test the default compression level
     #[test]
-    fn test_zstd_default_compression() -> Result<(), io::Error> {
+    fn test_zstd_default_compression() -> Result {
         let compressor = Zstd::default();
         test_compression(&compressor)
     }
 
     /// Test fast compression level
     #[test]
-    fn test_zstd_fast_compression() -> Result<(), io::Error> {
+    fn test_zstd_fast_compression() -> Result {
         let fast_compressor = Zstd {
             compression_level: 1,
             progress_args: ProgressArgs::default(),
@@ -228,7 +220,7 @@ mod tests {
 
     /// Test best compression level
     #[test]
-    fn test_zstd_best_compression() -> Result<(), io::Error> {
+    fn test_zstd_best_compression() -> Result {
         let best_compressor = Zstd {
             compression_level: 22,
             progress_args: ProgressArgs::default(),

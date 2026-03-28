@@ -3,10 +3,10 @@ pub mod progress;
 pub mod test_utils;
 pub mod utils;
 
+use anyhow::{anyhow, bail};
 use backends::*;
 use clap::{Parser, Subcommand};
 use is_terminal::IsTerminal;
-use std::io;
 use std::path::{Path, PathBuf};
 use utils::*;
 
@@ -51,11 +51,11 @@ enum Format {
 
 /// Get the input filename or return a default file
 /// This file will be used to generate the output filename
-fn get_input_filename(input: &CmprssInput) -> Result<&Path, io::Error> {
+fn get_input_filename(input: &CmprssInput) -> Result<&Path> {
     match input {
         CmprssInput::Path(paths) => match paths.first() {
             Some(path) => Ok(path),
-            None => Err(io::Error::other("error: no input specified")),
+            None => bail!("error: no input specified"),
         },
         CmprssInput::Pipe(_) => Ok(Path::new("archive")),
         CmprssInput::Reader(_) => Ok(Path::new("piped_data")),
@@ -211,10 +211,7 @@ fn guess_from_filenames(
 }
 
 /// Parse the common args and determine the details of the job requested
-fn get_job(
-    compressor: Option<Box<dyn Compressor>>,
-    common_args: &CommonArgs,
-) -> Result<Job, io::Error> {
+fn get_job(compressor: Option<Box<dyn Compressor>>, common_args: &CommonArgs) -> Result<Job> {
     let mut compressor = compressor;
     let mut action = {
         if common_args.compress {
@@ -231,7 +228,7 @@ fn get_job(
         match get_path(in_file) {
             Some(path) => inputs.push(path),
             None => {
-                return Err(io::Error::other("Specified input path does not exist"));
+                bail!("Specified input path does not exist");
             }
         }
     }
@@ -241,7 +238,7 @@ fn get_job(
             let path = Path::new(output);
             if path.try_exists()? && !path.is_dir() {
                 // Output path exists, bail out
-                return Err(io::Error::other("Specified output path already exists"));
+                bail!("Specified output path already exists");
             }
             Some(path)
         }
@@ -286,7 +283,7 @@ fn get_job(
         if let Some(path) = get_path(input) {
             inputs.push(path);
         } else {
-            return Err(io::Error::other("Specified input path does not exist"));
+            bail!("Specified input path does not exist");
         }
     }
 
@@ -299,7 +296,7 @@ fn get_job(
             {
                 CmprssInput::Pipe(std::io::stdin())
             } else {
-                return Err(io::Error::other("No specified input"));
+                bail!("No specified input");
             }
         }
         false => CmprssInput::Path(inputs),
@@ -318,7 +315,7 @@ fn get_job(
                     Action::Compress => {
                         let c = compressor
                             .as_ref()
-                            .ok_or_else(|| io::Error::other("Must specify a compressor"))?;
+                            .ok_or_else(|| anyhow!("Must specify a compressor"))?;
                         CmprssOutput::Path(PathBuf::from(
                             c.default_compressed_filename(get_input_filename(&cmprss_input)?),
                         ))
@@ -330,7 +327,7 @@ fn get_job(
                         }
                         let c = compressor
                             .as_ref()
-                            .ok_or_else(|| io::Error::other("Must specify a compressor"))?;
+                            .ok_or_else(|| anyhow!("Must specify a compressor"))?;
                         CmprssOutput::Path(PathBuf::from(
                             c.default_extracted_filename(get_input_filename(&cmprss_input)?),
                         ))
@@ -366,7 +363,7 @@ fn get_job(
                                 get_compressor_from_filename(get_input_filename(&cmprss_input)?);
                             let c = compressor
                                 .as_ref()
-                                .ok_or_else(|| io::Error::other("Must specify a compressor"))?;
+                                .ok_or_else(|| anyhow!("Must specify a compressor"))?;
                             action = Action::Extract;
                             CmprssOutput::Path(PathBuf::from(
                                 c.default_extracted_filename(get_input_filename(&cmprss_input)?),
@@ -390,7 +387,7 @@ fn get_job(
             Action::Extract => {
                 if let CmprssInput::Path(paths) = &cmprss_input {
                     if paths.len() != 1 {
-                        return Err(io::Error::other("Expected a single archive to extract"));
+                        bail!("Expected a single archive to extract");
                     }
                     compressor = get_compressor_from_filename(paths.first().unwrap());
                 }
@@ -402,10 +399,10 @@ fn get_job(
                         action = Action::Extract;
 
                         if compressor.is_none() {
-                            return Err(io::Error::other(format!(
+                            bail!(
                                 "Couldn't determine how to extract {:?}",
                                 paths.first().unwrap()
-                            )));
+                            );
                         }
                     } else {
                         let (guessed_compressor, guessed_action) =
@@ -428,15 +425,13 @@ fn get_job(
                         }
                     } else {
                         if paths.len() != 1 {
-                            return Err(io::Error::other(
-                                "Expected a single input file for piping to stdout",
-                            ));
+                            bail!("Expected a single input file for piping to stdout");
                         }
                         compressor = get_compressor_from_filename(paths.first().unwrap());
                         if compressor.is_some() {
                             action = Action::Extract;
                         } else {
-                            return Err(io::Error::other("Can't guess compressor to use"));
+                            bail!("Can't guess compressor to use");
                         }
                     }
                 }
@@ -454,7 +449,7 @@ fn get_job(
                         if compressor.is_some() {
                             action = Action::Compress;
                         } else {
-                            return Err(io::Error::other("Can't guess compressor to use"));
+                            bail!("Can't guess compressor to use");
                         }
                     }
                 }
@@ -476,10 +471,9 @@ fn get_job(
         }
     }
 
-    let compressor =
-        compressor.ok_or_else(|| io::Error::other("Could not determine compressor to use"))?;
+    let compressor = compressor.ok_or_else(|| anyhow!("Could not determine compressor to use"))?;
     if action == Action::Unknown {
-        return Err(io::Error::other("Could not determine action to take"));
+        bail!("Could not determine action to take");
     }
 
     Ok(Job {
@@ -490,14 +484,14 @@ fn get_job(
     })
 }
 
-fn command(compressor: Option<Box<dyn Compressor>>, args: &CommonArgs) -> Result<(), io::Error> {
+fn command(compressor: Option<Box<dyn Compressor>>, args: &CommonArgs) -> Result {
     let job = get_job(compressor, args)?;
 
     match job.action {
         Action::Compress => job.compressor.compress(job.input, job.output)?,
         Action::Extract => job.compressor.extract(job.input, job.output)?,
         _ => {
-            return Err(io::Error::other("Unknown action requested"));
+            bail!("Unknown action requested");
         }
     };
 
