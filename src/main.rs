@@ -86,34 +86,31 @@ fn get_compressor_from_filename(filename: &Path) -> Option<Box<dyn Compressor>> 
     let file_name = filename.file_name()?.to_str()?;
     let parts: Vec<&str> = file_name.split('.').collect();
 
-    // Try multi-level detection (e.g., "archive.tar.gz" → [tar, gzip])
-    if parts.len() >= 3 {
-        // Extensions right-to-left, e.g., ["gz", "tar"]
-        let extensions: Vec<&str> = parts[1..].iter().rev().copied().collect();
+    if parts.len() < 2 {
+        return None;
+    }
 
-        // Resolve each extension to a compressor name
-        let mut compressor_names: Vec<String> = Vec::new();
-        for ext in &extensions {
-            if let Some(c) = backends::compressor_from_str(ext) {
-                compressor_names.push(c.name().to_string());
-            } else {
-                compressor_names.clear();
-                break;
-            }
-        }
-
-        if compressor_names.len() > 1 {
-            // Reverse to innermost-to-outermost order for MultiLevelCompressor
-            compressor_names.reverse();
-            if let Ok(multi) = MultiLevelCompressor::from_names(&compressor_names) {
-                return Some(Box::new(multi));
-            }
+    // Scan extensions right-to-left, collecting known compressors
+    // until hitting an unknown extension or the base name.
+    // e.g., "a.b.tar.gz" → gz ✓, tar ✓, b ✗ stop → [gz, tar]
+    let mut compressor_names: Vec<String> = Vec::new();
+    for ext in parts[1..].iter().rev() {
+        if let Some(c) = backends::compressor_from_str(ext) {
+            compressor_names.push(c.name().to_string());
+        } else {
+            break;
         }
     }
 
-    // Single extension fallback
-    let ext = parts.last()?;
-    backends::compressor_from_str(ext)
+    if compressor_names.is_empty() {
+        return None;
+    }
+
+    // Reverse to innermost-to-outermost order
+    compressor_names.reverse();
+    MultiLevelCompressor::from_names(&compressor_names)
+        .ok()
+        .map(|m| Box::new(m) as Box<dyn Compressor>)
 }
 
 /// Convert an input path into a Path
