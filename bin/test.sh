@@ -8,7 +8,8 @@ CACHE_DIR="${PRJ_ROOT}/.cache"
 # Create a tmp directory and cd into it
 tmpdir() {
   mkdir -p "$CACHE_DIR"
-  local dir=$(mktemp --directory --tmpdir="$CACHE_DIR")
+  local dir
+  dir=$(mktemp --directory --tmpdir="$CACHE_DIR")
   cd "$dir"
 }
 
@@ -30,9 +31,11 @@ compare_size() {
   local file2="$2"
   # Use $3 as the max difference or 100 bytes
   local max_diff=${3:-100}
-  local size1=$(stat -c %s "$file1")
-  local size2=$(stat -c %s "$file2")
-  if [ $((size1 - size2)) -gt $max_diff ]; then
+  local size1
+  local size2
+  size1=$(stat -c %s "$file1")
+  size2=$(stat -c %s "$file2")
+  if [ $((size1 - size2)) -gt "$max_diff" ]; then
     echo "Size difference too large: $file1:$size1 $file2:$size2"
     exit 1
   fi
@@ -67,8 +70,8 @@ test_gzip_level() {
   echo "Creating random data"
   random_file 1000000 file
   echo "Compressing with gzip and cmprss"
-  gzip -$1 -c file >gzip_file.gz
-  cmprss gzip --level $1 file cmprss_file.gz --progress=off
+  gzip -"$1" -c file >gzip_file.gz
+  cmprss gzip --level "$1" file cmprss_file.gz --progress=off
   # Compare the two archives
   # The archives may have slight variations (versioning or whatever) so we
   # only compare the sizes to make sure they are similar
@@ -100,8 +103,8 @@ test_xz_level() {
   echo "Creating random data"
   random_file 1000000 file
   echo "Compressing with xz and cmprss"
-  xz -$1 --stdout file >xz_file.xz
-  cmprss xz --level $1 file cmprss_file.xz --progress=off
+  xz -"$1" --stdout file >xz_file.xz
+  cmprss xz --level "$1" file cmprss_file.xz --progress=off
   # Compare the two archives
   # The archives may have slight variations (versioning or whatever) so we
   # only compare the sizes to make sure they are similar
@@ -134,8 +137,8 @@ test_bzip2_level() {
   echo "Creating random data"
   random_file 1000000 file
   echo "Compressing with bzip2 and cmprss"
-  bzip2 -$1 --stdout file >bzip2_file.bz2
-  cmprss bzip2 --level $1 file cmprss_file.bz2 --progress=off
+  bzip2 -"$1" --stdout file >bzip2_file.bz2
+  cmprss bzip2 --level "$1" file cmprss_file.bz2 --progress=off
   # Compare the two archives
   # The archives may have slight variations (versioning or whatever) so we
   # only compare the sizes to make sure they are similar
@@ -167,8 +170,8 @@ test_zstd_level() {
   echo "Creating random data"
   random_file 1000000 file
   echo "Compressing with zstd and cmprss"
-  zstd -$1 -c file >zstd_file.zst
-  cmprss zstd --level $1 file cmprss_file.zst --progress=off
+  zstd -"$1" -c file >zstd_file.zst
+  cmprss zstd --level "$1" file cmprss_file.zst --progress=off
   # Compare the two archives
   # The archives may have slight variations (versioning or whatever) so we
   # only compare the sizes to make sure they are similar

@@ -83,10 +83,66 @@
             doCheck = false; # Tests are run as a separate build with nextest
             meta.mainProgram = "cmprss";
           });
+        # Source filtered to specific file extensions for lightweight linter checks
+        cleanSrc = pkgs.lib.cleanSource ./.;
+        sourceWithExts = exts:
+          pkgs.lib.cleanSourceWith {
+            src = cleanSrc;
+            filter = path: type:
+              (type == "directory")
+              || (pkgs.lib.any (ext: pkgs.lib.hasSuffix ".${ext}" path) exts);
+          };
+
+        mkSimpleLinter = {
+          name,
+          packages ? [],
+          src ? cleanSrc,
+          command,
+        }:
+          pkgs.runCommand "lint-${name}" {
+            nativeBuildInputs = packages;
+            inherit src;
+          } ''
+            cd $src
+            ${command}
+            mkdir -p $out
+          '';
+
+        linters = {
+          statix = mkSimpleLinter {
+            name = "statix";
+            packages = [pkgs.statix];
+            src = sourceWithExts ["nix"];
+            command = "statix check .";
+          };
+          deadnix = mkSimpleLinter {
+            name = "deadnix";
+            packages = [pkgs.deadnix];
+            src = sourceWithExts ["nix"];
+            command = "deadnix --fail .";
+          };
+          shellcheck = mkSimpleLinter {
+            name = "shellcheck";
+            packages = [pkgs.shellcheck pkgs.findutils];
+            src = sourceWithExts ["sh"];
+            command = ''find . -name "*.sh" -type f -exec shellcheck {} +'';
+          };
+          actionlint = mkSimpleLinter {
+            name = "actionlint";
+            packages = [pkgs.actionlint pkgs.shellcheck pkgs.findutils];
+            src = pkgs.lib.cleanSourceWith {
+              src = cleanSrc;
+              filter = path: type:
+                (type == "directory")
+                || (pkgs.lib.hasSuffix ".yml" path && pkgs.lib.hasInfix ".github" path);
+            };
+            command = ''find .github/workflows -name "*.yml" -exec actionlint {} +'';
+          };
+        };
       in {
         packages = {
           default = cmprss;
-          cmprss = cmprss;
+          inherit cmprss;
 
           # Check code coverage with tarpaulin
           coverage = craneLib.cargoTarpaulin (commonArgs
@@ -118,12 +174,14 @@
             });
         };
 
-        checks = {
-          inherit cmprss;
-          # Build almost every package in checks, with exceptions:
-          # - coverage: It requires a full rebuild, and only needs to be run occasionally
-          inherit (self.packages.${system}) clippy doc fmt test deny;
-        };
+        checks =
+          {
+            inherit cmprss;
+            # Build almost every package in checks, with exceptions:
+            # - coverage: It requires a full rebuild, and only needs to be run occasionally
+            inherit (self.packages.${system}) clippy doc fmt test deny;
+          }
+          // linters;
 
         # This also sets up `nix fmt` to run all formatters
         treefmt = {
@@ -167,11 +225,13 @@
           packages = with pkgs; [
             act # For running Github Actions locally
             alejandra
+            actionlint
             deadnix
             git-cliff
             go-task
             gum # Pretty printing in scripts
             nodePackages.prettier
+            shellcheck
             statix
 
             # For running tests
