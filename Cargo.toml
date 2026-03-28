@@ -33,3 +33,12 @@ rand = "0.10"
 [features]
 default = ["interop"]
 interop = []
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"
