@@ -8,7 +8,7 @@ use assert_fs::TempDir;
 use predicates::prelude::*;
 use std::process::Command;
 
-// Test the most common multi-level compression case: tar.gz
+// Test manual step-by-step tar.gz roundtrip
 #[test]
 fn test_tar_gz_manual_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = TempDir::new()?;
@@ -62,9 +62,7 @@ fn test_tar_gz_manual_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-//
-// Test the multi-level compression using tar.gz format
-//
+// Test pipeline compression using tar.gz format
 #[test]
 fn test_tar_gz_compress() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = TempDir::new()?;
@@ -91,9 +89,7 @@ fn test_tar_gz_compress() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-//
-// Test the multi-level extraction using tar.gz format
-//
+// Test pipeline extraction using tar.gz format
 #[test]
 fn test_tar_gz_extract() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = TempDir::new()?;
@@ -179,9 +175,7 @@ fn test_tar_xz_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-//
-// Test the multi-level extraction using tar.gz format with explicit commands
-//
+// Test pipeline extraction using tar.gz with explicit compress then auto-detect extract
 #[test]
 fn test_tar_gz_explicit_then_extract() -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = TempDir::new()?;

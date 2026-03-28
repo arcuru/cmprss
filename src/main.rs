@@ -81,7 +81,7 @@ struct Job {
     action: Action,
 }
 
-/// Get a compressor from a filename, detecting multi-level formats like tar.gz
+/// Get a compressor pipeline from a filename by scanning extensions right-to-left
 fn get_compressor_from_filename(filename: &Path) -> Option<Box<dyn Compressor>> {
     let file_name = filename.file_name()?.to_str()?;
     let parts: Vec<&str> = file_name.split('.').collect();
@@ -108,7 +108,7 @@ fn get_compressor_from_filename(filename: &Path) -> Option<Box<dyn Compressor>> 
 
     // Reverse to innermost-to-outermost order
     compressor_names.reverse();
-    MultiLevelCompressor::from_names(&compressor_names)
+    Pipeline::from_names(&compressor_names)
         .ok()
         .map(|m| Box::new(m) as Box<dyn Compressor>)
 }
@@ -507,7 +507,7 @@ fn get_job(
                 }
                 // Handle all Writer output cases
                 (_, CmprssOutput::Writer(_)) => {
-                    // Writer outputs are only supported in multi-level compression
+                    // Writer outputs are only used internally by Pipeline
                     // In main.rs we'll assume compression
                     action = Action::Compress;
                 }

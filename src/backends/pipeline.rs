@@ -4,20 +4,19 @@ use std::path::Path;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 
-/// A compressor that chains multiple compressors together
-/// This allows for multi-level compression formats like tar.gz
-pub struct MultiLevelCompressor {
+/// A pipeline of one or more compressors applied in sequence (e.g., tar.gz)
+pub struct Pipeline {
     // The chain of compressors to apply in order (innermost to outermost)
     compressors: Vec<Box<dyn Compressor>>,
 }
 
-impl MultiLevelCompressor {
-    /// Create a new MultiLevelCompressor with a chain of compressors
+impl Pipeline {
+    /// Create a new Pipeline with the given compressors
     pub fn new(compressors: Vec<Box<dyn Compressor>>) -> Self {
-        MultiLevelCompressor { compressors }
+        Pipeline { compressors }
     }
 
-    /// Create a new MultiLevelCompressor from compressor type names
+    /// Create a new Pipeline from compressor type names
     pub fn from_names(compressor_names: &[String]) -> io::Result<Self> {
         let compressors = compressor_names
             .iter()
@@ -149,7 +148,7 @@ impl Drop for PipeWriter {
     }
 }
 
-impl Compressor for MultiLevelCompressor {
+impl Compressor for Pipeline {
     fn name(&self) -> &str {
         if let Some(comp) = self.compressors.last() {
             comp.name()
@@ -217,7 +216,7 @@ impl Compressor for MultiLevelCompressor {
         if self.compressors.is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
-                "No compressors in multi-level chain",
+                "No compressors in pipeline",
             ));
         }
 
@@ -272,7 +271,7 @@ impl Compressor for MultiLevelCompressor {
         if self.compressors.is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
-                "No compressors in multi-level chain for extraction",
+                "No compressors in pipeline for extraction",
             ));
         }
 
@@ -349,45 +348,36 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn test_multi_level_compression() -> Result<(), io::Error> {
-        // Create a temporary directory for our test
+    fn test_pipeline_compression() -> Result<(), io::Error> {
         let temp_dir = tempdir()?;
 
-        // Create a test file
-        let test_content = "This is a test file for multi-level compression";
+        let test_content = "This is a test file for pipeline compression";
         let test_file_path = temp_dir.path().join("test.txt");
         fs::write(&test_file_path, test_content)?;
 
-        // Create a tar.gz compressor (tar first, then gzip)
-        let compressors: Vec<Box<dyn Compressor>> = vec![
+        let pipeline = Pipeline::new(vec![
             Box::new(crate::backends::Tar::default()),
             Box::new(crate::backends::Gzip::default()),
-        ];
-        let multi_compressor = MultiLevelCompressor::new(compressors);
+        ]);
 
-        // Compress the test file
         let archive_path = temp_dir.path().join("test.tar.gz");
-        multi_compressor.compress(
+        pipeline.compress(
             CmprssInput::Path(vec![test_file_path.clone()]),
             CmprssOutput::Path(archive_path.clone()),
         )?;
 
-        // Verify the archive was created
         assert!(archive_path.exists());
 
-        // Extract the archive
         let output_dir = temp_dir.path().join("extracted");
         fs::create_dir(&output_dir)?;
-        multi_compressor.extract(
+        pipeline.extract(
             CmprssInput::Path(vec![archive_path.clone()]),
             CmprssOutput::Path(output_dir.clone()),
         )?;
 
-        // Verify the file was extracted correctly
         let extracted_file = output_dir.join("test.txt");
         assert!(extracted_file.exists());
 
-        // Verify the content is the same
         let extracted_content = fs::read_to_string(extracted_file)?;
         assert_eq!(extracted_content, test_content);
 
