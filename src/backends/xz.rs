@@ -1,5 +1,5 @@
 use crate::{
-    progress::{copy_with_progress, ProgressArgs},
+    progress::{ProgressArgs, copy_with_progress},
     utils::*,
 };
 use clap::Args;

@@ -1,5 +1,5 @@
-use crate::progress::{copy_with_progress, ProgressArgs};
-use crate::utils::{cmprss_error, CmprssInput, CmprssOutput, CommonArgs, Compressor};
+use crate::progress::{ProgressArgs, copy_with_progress};
+use crate::utils::{CmprssInput, CmprssOutput, CommonArgs, Compressor, cmprss_error};
 use clap::Args;
 use lz4_flex::frame::{FrameDecoder, FrameEncoder};
 use std::fs::File;

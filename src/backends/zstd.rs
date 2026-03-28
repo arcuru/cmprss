@@ -1,7 +1,7 @@
-use crate::progress::{copy_with_progress, ProgressArgs};
+use crate::progress::{ProgressArgs, copy_with_progress};
 use crate::utils::{
-    cmprss_error, CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
-    LevelArgs,
+    CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor, LevelArgs,
+    cmprss_error,
 };
 use clap::Args;
 use std::fs::File;

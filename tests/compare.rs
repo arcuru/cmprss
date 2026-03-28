@@ -7,7 +7,7 @@ mod compare {
 
     mod utils {
         use super::*;
-        use rand::Rng;
+        use rand::RngExt as _;
 
         /// Asserts that the two directories are identical
         pub fn assert_directory(left: PathBuf, right: PathBuf) {
@@ -40,12 +40,14 @@ mod compare {
 
         /// Create a directory filled with random files
         pub fn create_random_files(dir: PathBuf, count: usize) {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             std::fs::create_dir_all(&dir).unwrap();
 
             for i in 0..count {
                 let path = format!("{}/file-{}", dir.display(), i);
-                let data: Vec<u8> = (0..rng.gen_range(0..1000)).map(|_| rng.gen()).collect();
+                let data: Vec<u8> = (0..rng.random_range(0..1000))
+                    .map(|_| rng.random())
+                    .collect();
                 std::fs::write(path, data).unwrap();
             }
         }

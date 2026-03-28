@@ -1,12 +1,12 @@
 use crate::{
-    progress::{copy_with_progress, ProgressArgs},
+    progress::{ProgressArgs, copy_with_progress},
     utils::{
         CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
         ExtractedTarget, LevelArgs,
     },
 };
-use bzip2::write::{BzDecoder, BzEncoder};
 use bzip2::Compression;
+use bzip2::write::{BzDecoder, BzEncoder};
 use clap::Args;
 use std::{
     fs::File,

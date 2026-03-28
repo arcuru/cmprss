@@ -1,7 +1,7 @@
 use crate::utils::*;
 use std::io::{self, Read, Write};
 use std::path::Path;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 
 /// A pipeline of one or more compressors applied in sequence (e.g., tar.gz)

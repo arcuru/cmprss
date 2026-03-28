@@ -28,7 +28,7 @@ impl Zip {
         writer: W,
     ) -> Result<(), io::Error> {
         let mut zip_writer = ZipWriter::new(writer);
-        let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
+        let options = FileOptions::<()>::default().compression_method(CompressionMethod::Deflated);
 
         match input {
             CmprssInput::Path(paths) => {
@@ -182,7 +182,8 @@ fn add_directory<W: Write + Seek>(
             .to_string_lossy()
             .replace('\\', "/");
         if entry_path.is_file() {
-            let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
+            let options =
+                FileOptions::<()>::default().compression_method(CompressionMethod::Deflated);
             zip.start_file(name, options)?;
             let mut f = File::open(&entry_path)?;
             io::copy(&mut f, zip)?;
@@ -191,7 +192,7 @@ fn add_directory<W: Write + Seek>(
             let dir_name = name.clone() + "/";
             zip.add_directory(
                 dir_name,
-                FileOptions::default().compression_method(CompressionMethod::Deflated),
+                FileOptions::<()>::default().compression_method(CompressionMethod::Deflated),
             )?;
             add_directory(zip, base, &entry_path)?;
         }

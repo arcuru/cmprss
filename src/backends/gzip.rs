@@ -1,8 +1,8 @@
-use crate::progress::{copy_with_progress, ProgressArgs};
+use crate::progress::{ProgressArgs, copy_with_progress};
 use crate::utils::*;
 use clap::Args;
 use flate2::write::GzEncoder;
-use flate2::{read::GzDecoder, Compression};
+use flate2::{Compression, read::GzDecoder};
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read, Write};
 
