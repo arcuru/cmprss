@@ -211,7 +211,7 @@
           name = "cmprss";
           shellHook = ''
             echo ---------------------
-            task --list
+            just --list
             echo ---------------------
           '';
 
@@ -228,8 +228,8 @@
             actionlint
             deadnix
             git-cliff
-            go-task
             gum # Pretty printing in scripts
+            just
             nodePackages.prettier
             shellcheck
             statix
