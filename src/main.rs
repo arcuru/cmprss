@@ -55,10 +55,7 @@ fn get_input_filename(input: &CmprssInput) -> Result<&Path, io::Error> {
     match input {
         CmprssInput::Path(paths) => match paths.first() {
             Some(path) => Ok(path),
-            None => Err(io::Error::new(
-                io::ErrorKind::Other,
-                "error: no input specified",
-            )),
+            None => Err(io::Error::other("error: no input specified")),
         },
         CmprssInput::Pipe(_) => Ok(Path::new("archive")),
         CmprssInput::Reader(_) => Ok(Path::new("piped_data")),
@@ -234,10 +231,7 @@ fn get_job(
         match get_path(in_file) {
             Some(path) => inputs.push(path),
             None => {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Specified input path does not exist",
-                ));
+                return Err(io::Error::other("Specified input path does not exist"));
             }
         }
     }
@@ -247,10 +241,7 @@ fn get_job(
             let path = Path::new(output);
             if path.try_exists()? && !path.is_dir() {
                 // Output path exists, bail out
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Specified output path already exists",
-                ));
+                return Err(io::Error::other("Specified output path already exists"));
             }
             Some(path)
         }
@@ -295,10 +286,7 @@ fn get_job(
         if let Some(path) = get_path(input) {
             inputs.push(path);
         } else {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Specified input path does not exist",
-            ));
+            return Err(io::Error::other("Specified input path does not exist"));
         }
     }
 
@@ -311,7 +299,7 @@ fn get_job(
             {
                 CmprssInput::Pipe(std::io::stdin())
             } else {
-                return Err(io::Error::new(io::ErrorKind::Other, "No specified input"));
+                return Err(io::Error::other("No specified input"));
             }
         }
         false => CmprssInput::Path(inputs),
@@ -328,85 +316,61 @@ fn get_job(
             } else {
                 match action {
                     Action::Compress => {
-                        if compressor.is_none() {
-                            return Err(io::Error::new(
-                                io::ErrorKind::Other,
-                                "Must specify a compressor",
-                            ));
-                        }
+                        let c = compressor
+                            .as_ref()
+                            .ok_or_else(|| io::Error::other("Must specify a compressor"))?;
                         CmprssOutput::Path(PathBuf::from(
-                            compressor
-                                .as_ref()
-                                .unwrap()
-                                .default_compressed_filename(get_input_filename(&cmprss_input)?),
+                            c.default_compressed_filename(get_input_filename(&cmprss_input)?),
                         ))
                     }
                     Action::Extract => {
                         if compressor.is_none() {
                             compressor =
                                 get_compressor_from_filename(get_input_filename(&cmprss_input)?);
-                            if compressor.is_none() {
-                                return Err(io::Error::new(
-                                    io::ErrorKind::Other,
-                                    "Must specify a compressor",
-                                ));
-                            }
                         }
+                        let c = compressor
+                            .as_ref()
+                            .ok_or_else(|| io::Error::other("Must specify a compressor"))?;
                         CmprssOutput::Path(PathBuf::from(
-                            compressor
-                                .as_ref()
-                                .unwrap()
-                                .default_extracted_filename(get_input_filename(&cmprss_input)?),
+                            c.default_extracted_filename(get_input_filename(&cmprss_input)?),
                         ))
                     }
                     Action::Unknown => {
-                        if compressor.is_none() {
-                            // Can still work if the input is an archive
-                            compressor =
-                                get_compressor_from_filename(get_input_filename(&cmprss_input)?);
-                            if compressor.is_none() {
-                                return Err(io::Error::new(
-                                    io::ErrorKind::Other,
-                                    "Must specify a compressor",
-                                ));
-                            }
-                            action = Action::Extract;
-                            CmprssOutput::Path(PathBuf::from(
-                                compressor
-                                    .as_ref()
-                                    .unwrap()
-                                    .default_extracted_filename(get_input_filename(&cmprss_input)?),
-                            ))
-                        } else {
+                        if let Some(ref c) = compressor {
                             // We know the compressor, does the input have the same extension?
                             if let Some(compressor_from_input) =
                                 get_compressor_from_filename(get_input_filename(&cmprss_input)?)
                             {
-                                if compressor.as_ref().unwrap().name()
-                                    == compressor_from_input.name()
-                                {
+                                if c.name() == compressor_from_input.name() {
                                     action = Action::Extract;
-                                    CmprssOutput::Path(PathBuf::from(
-                                        compressor.as_ref().unwrap().default_extracted_filename(
-                                            get_input_filename(&cmprss_input)?,
-                                        ),
-                                    ))
+                                    CmprssOutput::Path(PathBuf::from(c.default_extracted_filename(
+                                        get_input_filename(&cmprss_input)?,
+                                    )))
                                 } else {
                                     action = Action::Compress;
                                     CmprssOutput::Path(PathBuf::from(
-                                        compressor.as_ref().unwrap().default_compressed_filename(
-                                            get_input_filename(&cmprss_input)?,
-                                        ),
+                                        c.default_compressed_filename(get_input_filename(
+                                            &cmprss_input,
+                                        )?),
                                     ))
                                 }
                             } else {
                                 action = Action::Compress;
-                                CmprssOutput::Path(PathBuf::from(
-                                    compressor.as_ref().unwrap().default_compressed_filename(
-                                        get_input_filename(&cmprss_input)?,
-                                    ),
-                                ))
+                                CmprssOutput::Path(PathBuf::from(c.default_compressed_filename(
+                                    get_input_filename(&cmprss_input)?,
+                                )))
                             }
+                        } else {
+                            // Can still work if the input is an archive
+                            compressor =
+                                get_compressor_from_filename(get_input_filename(&cmprss_input)?);
+                            let c = compressor
+                                .as_ref()
+                                .ok_or_else(|| io::Error::other("Must specify a compressor"))?;
+                            action = Action::Extract;
+                            CmprssOutput::Path(PathBuf::from(
+                                c.default_extracted_filename(get_input_filename(&cmprss_input)?),
+                            ))
                         }
                     }
                 }
@@ -426,10 +390,7 @@ fn get_job(
             Action::Extract => {
                 if let CmprssInput::Path(paths) = &cmprss_input {
                     if paths.len() != 1 {
-                        return Err(io::Error::new(
-                            io::ErrorKind::Other,
-                            "Expected a single archive to extract",
-                        ));
+                        return Err(io::Error::other("Expected a single archive to extract"));
                     }
                     compressor = get_compressor_from_filename(paths.first().unwrap());
                 }
@@ -441,13 +402,10 @@ fn get_job(
                         action = Action::Extract;
 
                         if compressor.is_none() {
-                            return Err(io::Error::new(
-                                io::ErrorKind::Other,
-                                format!(
-                                    "Couldn't determine how to extract {:?}",
-                                    paths.first().unwrap()
-                                ),
-                            ));
+                            return Err(io::Error::other(format!(
+                                "Couldn't determine how to extract {:?}",
+                                paths.first().unwrap()
+                            )));
                         }
                     } else {
                         let (guessed_compressor, guessed_action) =
@@ -457,10 +415,20 @@ fn get_job(
                     }
                 }
                 (CmprssInput::Path(paths), CmprssOutput::Pipe(_)) => {
-                    if compressor.is_none() {
+                    if let Some(ref c) = compressor {
+                        if let Some(input_c) = get_compressor_from_filename(paths.first().unwrap())
+                        {
+                            if c.name() == input_c.name() {
+                                action = Action::Extract;
+                            } else {
+                                action = Action::Compress;
+                            }
+                        } else {
+                            action = Action::Compress;
+                        }
+                    } else {
                         if paths.len() != 1 {
-                            return Err(io::Error::new(
-                                io::ErrorKind::Other,
+                            return Err(io::Error::other(
                                 "Expected a single input file for piping to stdout",
                             ));
                         }
@@ -468,38 +436,26 @@ fn get_job(
                         if compressor.is_some() {
                             action = Action::Extract;
                         } else {
-                            return Err(io::Error::new(
-                                io::ErrorKind::Other,
-                                "Can't guess compressor to use",
-                            ));
+                            return Err(io::Error::other("Can't guess compressor to use"));
                         }
-                    } else if let Some(c) = get_compressor_from_filename(paths.first().unwrap()) {
-                        if compressor.as_ref().unwrap().name() == c.name() {
-                            action = Action::Extract;
-                        } else {
-                            action = Action::Compress;
-                        }
-                    } else {
-                        action = Action::Compress;
                     }
                 }
                 (CmprssInput::Pipe(_), CmprssOutput::Path(path)) => {
-                    if compressor.is_none() {
+                    if let Some(ref c) = compressor {
+                        if get_compressor_from_filename(path)
+                            .is_some_and(|pc| c.name() == pc.name())
+                        {
+                            action = Action::Compress;
+                        } else {
+                            action = Action::Extract;
+                        }
+                    } else {
                         compressor = get_compressor_from_filename(path);
                         if compressor.is_some() {
                             action = Action::Compress;
                         } else {
-                            return Err(io::Error::new(
-                                io::ErrorKind::Other,
-                                "Can't guess compressor to use",
-                            ));
+                            return Err(io::Error::other("Can't guess compressor to use"));
                         }
-                    } else if compressor.as_ref().unwrap().name()
-                        == get_compressor_from_filename(path).unwrap().name()
-                    {
-                        action = Action::Compress;
-                    } else {
-                        action = Action::Extract;
                     }
                 }
                 (CmprssInput::Pipe(_), CmprssOutput::Pipe(_)) => {
@@ -520,21 +476,14 @@ fn get_job(
         }
     }
 
-    if compressor.is_none() {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Could not determine compressor to use",
-        ));
-    }
+    let compressor =
+        compressor.ok_or_else(|| io::Error::other("Could not determine compressor to use"))?;
     if action == Action::Unknown {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Could not determine action to take",
-        ));
+        return Err(io::Error::other("Could not determine action to take"));
     }
 
     Ok(Job {
-        compressor: compressor.unwrap(),
+        compressor,
         input: cmprss_input,
         output: cmprss_output,
         action,
@@ -548,10 +497,7 @@ fn command(compressor: Option<Box<dyn Compressor>>, args: &CommonArgs) -> Result
         Action::Compress => job.compressor.compress(job.input, job.output)?,
         Action::Extract => job.compressor.extract(job.input, job.output)?,
         _ => {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Unknown action requested",
-            ));
+            return Err(io::Error::other("Unknown action requested"));
         }
     };
 

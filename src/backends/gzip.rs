@@ -68,7 +68,9 @@ impl Compressor for Gzip {
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
         if let CmprssOutput::Path(out_path) = &output {
             if out_path.is_dir() {
-                return cmprss_error("Gzip does not support compressing to a directory. Please specify an output file.");
+                return cmprss_error(
+                    "Gzip does not support compressing to a directory. Please specify an output file.",
+                );
             }
         }
         if let CmprssInput::Path(input_paths) = &input {

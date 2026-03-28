@@ -228,7 +228,7 @@ impl fmt::Debug for dyn Compressor {
 }
 
 pub fn cmprss_error(message: &str) -> Result<(), io::Error> {
-    Err(io::Error::new(io::ErrorKind::Other, message))
+    Err(io::Error::other(message))
 }
 
 /// Wrapper for Read + Send to allow Debug

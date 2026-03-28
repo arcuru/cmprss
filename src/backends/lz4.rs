@@ -42,7 +42,9 @@ impl Compressor for Lz4 {
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
         if let CmprssOutput::Path(out_path) = &output {
             if out_path.is_dir() {
-                return cmprss_error("LZ4 does not support compressing to a directory. Please specify an output file.");
+                return cmprss_error(
+                    "LZ4 does not support compressing to a directory. Please specify an output file.",
+                );
             }
         }
         if let CmprssInput::Path(input_paths) = &input {
@@ -100,7 +102,9 @@ impl Compressor for Lz4 {
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result<(), io::Error> {
         if let CmprssOutput::Path(out_path) = &output {
             if out_path.is_dir() {
-                return cmprss_error("LZ4 does not support extracting to a directory. Please specify an output file.");
+                return cmprss_error(
+                    "LZ4 does not support extracting to a directory. Please specify an output file.",
+                );
             }
         }
 

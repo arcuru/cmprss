@@ -251,9 +251,9 @@ impl Compressor for Pipeline {
         last_compressor.compress(current_thread_input, output)?;
 
         for handle in handles {
-            handle.join().map_err(|_| {
-                io::Error::new(io::ErrorKind::Other, "Compression thread panicked")
-            })??;
+            handle
+                .join()
+                .map_err(|_| io::Error::other("Compression thread panicked"))??;
         }
         Ok(())
     }
@@ -302,13 +302,13 @@ impl Compressor for Pipeline {
 
         let final_output = match output {
             CmprssOutput::Path(ref p) => {
-                if last_extractor.default_extracted_target() == ExtractedTarget::DIRECTORY {
-                    if !p.exists() {
-                        std::fs::create_dir_all(p)?;
-                    }
-                    // If it's a directory, the tar extractor (usually innermost) will handle it.
-                    // The path provided should be the target directory.
+                if last_extractor.default_extracted_target() == ExtractedTarget::DIRECTORY
+                    && !p.exists()
+                {
+                    std::fs::create_dir_all(p)?;
                 }
+                // If it's a directory, the tar extractor (usually innermost) will handle it.
+                // The path provided should be the target directory.
                 // Always pass the path; the backend decides how to use it.
                 CmprssOutput::Path(p.clone())
             }
@@ -319,9 +319,9 @@ impl Compressor for Pipeline {
         last_extractor.extract(current_thread_input, final_output)?;
 
         for handle in handles {
-            handle.join().map_err(|_| {
-                io::Error::new(io::ErrorKind::Other, "Extraction thread panicked")
-            })??;
+            handle
+                .join()
+                .map_err(|_| io::Error::other("Extraction thread panicked"))??;
         }
         Ok(())
     }

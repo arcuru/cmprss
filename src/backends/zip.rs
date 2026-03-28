@@ -117,9 +117,7 @@ impl Compressor for Zip {
                         }
                         let file = File::open(&paths[0])?;
                         let mut archive = ZipArchive::new(file)?;
-                        archive
-                            .extract(out_dir)
-                            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+                        archive.extract(out_dir).map_err(io::Error::other)
                     }
                     CmprssInput::Pipe(mut pipe) => {
                         // Create a temporary file to store the zip content
@@ -133,15 +131,11 @@ impl Compressor for Zip {
 
                         // Extract from the temporary file
                         let mut archive = ZipArchive::new(temp_file)?;
-                        archive
-                            .extract(out_dir)
-                            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+                        archive.extract(out_dir).map_err(io::Error::other)
                     }
-                    CmprssInput::Reader(_) => {
-                        return cmprss_error(
-                            "Cannot extract from a reader input for zip (requires seekable input)",
-                        );
-                    }
+                    CmprssInput::Reader(_) => cmprss_error(
+                        "Cannot extract from a reader input for zip (requires seekable input)",
+                    ),
                 }
             }
             CmprssOutput::Pipe(_) => cmprss_error("zip extraction to stdout is not supported"),
