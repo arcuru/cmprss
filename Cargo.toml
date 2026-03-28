@@ -17,7 +17,7 @@ flate2 = "1"
 indicatif = "0.17"
 is-terminal = "0.4"
 tar = "0.4"
-xz2 = "0.1"
+xz2 = { version = "0.1", features = ["static"] }
 zip = "0.6"
 tempfile = "3"
 zstd = "0.13"

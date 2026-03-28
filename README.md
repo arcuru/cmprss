@@ -17,9 +17,9 @@ Currently supports:
 - gzip
 - lz4
 - tar
-- xz (bindings)
+- xz
 - zip
-- zstd (bindings)
+- zstd
 
 ## Install
 
