@@ -1,0 +1,31 @@
+name: cmprss
+version: "0.2.0"
+summary: A compression multi-tool for the command line
+description: |
+  Replace tar with something you can remember.
+  cmprss infers behavior based on input so you don't need to remember
+  esoteric CLI arguments. Supports bzip2, gzip, lz4, tar, xz, zip,
+  and zstd, including multi-level archives like .tar.gz and .tar.xz.
+  All compression libraries are statically compiled in.
+
+license: AGPL-3.0-or-later
+source-code: https://github.com/arcuru/cmprss
+
+base: core24
+confinement: strict
+grade: stable
+
+apps:
+  cmprss:
+    command: bin/cmprss
+    plugs:
+      - home
+      - removable-media
+
+parts:
+  cmprss:
+    plugin: rust
+    source: .
+    build-packages:
+      - pkg-config
+      - gcc
