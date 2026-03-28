@@ -137,12 +137,7 @@
           programs = {
             alejandra.enable = true;
             prettier.enable = true;
-            rustfmt = {
-              enable = true;
-              package = pkgs.writeShellScriptBin "rustfmt" ''
-                exec ${fenixStable.rustfmt}/bin/rustfmt "$@"
-              '';
-            };
+            rustfmt.enable = true;
           };
         };
 
