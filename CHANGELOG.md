@@ -128,7 +128,7 @@ All notable changes to this project will be documented in this file.
 
 ### Testing
 
-- Add some tar cli tests with target inferrence
+- Add some tar cli tests with target inference
 - Use nextest to run tests
 
 ### Build

@@ -132,6 +132,11 @@
             alejandra.enable = true;
             prettier.enable = true;
             rustfmt.enable = true;
+            shfmt.enable = true;
+            typos = {
+              enable = true;
+              configFile = "./.config/typos.toml";
+            };
           };
         };
 
