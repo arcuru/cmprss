@@ -29,6 +29,8 @@ Installation is available through source code and cargo. `cargo install cmprss` 
 
 For Nix users, the repository contains a flake and an overlay. `nix run github:arcuru/cmprss`
 
+A fully static musl-linked binary is also available for Linux: `nix build github:arcuru/cmprss#cmprss-static`
+
 ## Usage
 
 The primary goal is to infer behavior based on the input, so that you don't need to remember esoteric CLI arguments.

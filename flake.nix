@@ -83,6 +83,48 @@
             doCheck = false; # Tests are run as a separate build with nextest
             meta.mainProgram = "cmprss";
           });
+
+        # Fully static musl build (Linux only)
+        staticMusl = pkgs.lib.optionalAttrs pkgs.stdenv.isLinux (
+          let
+            muslTarget =
+              if system == "x86_64-linux"
+              then "x86_64-unknown-linux-musl"
+              else "aarch64-unknown-linux-musl";
+
+            muslToolchain = inputs.fenix.packages.${system}.combine [
+              fenixStable.cargo
+              fenixStable.rustc
+              inputs.fenix.packages.${system}.targets.${muslTarget}.stable.rust-std
+            ];
+
+            craneLibMusl = (inputs.crane.mkLib pkgs).overrideToolchain muslToolchain;
+
+            musl-cc = pkgs.pkgsStatic.stdenv.cc;
+
+            staticArgs = {
+              src = craneLibMusl.cleanCargoSource ./.;
+              strictDeps = true;
+              CARGO_BUILD_TARGET = muslTarget;
+              CARGO_BUILD_RUSTFLAGS = "-C target-feature=+crt-static";
+              TARGET_CC = "${musl-cc}/bin/${musl-cc.targetPrefix}cc";
+              HOST_CC = "${pkgs.stdenv.cc}/bin/cc";
+              nativeBuildInputs = [
+                musl-cc
+                pkgs.pkg-config
+              ];
+            };
+
+            cargoArtifactsStatic = craneLibMusl.buildDepsOnly staticArgs;
+          in {
+            cmprss-static = craneLibMusl.buildPackage (staticArgs
+              // {
+                cargoArtifacts = cargoArtifactsStatic;
+                doCheck = false;
+                meta.mainProgram = "cmprss";
+              });
+          }
+        );
         # Source filtered to specific file extensions for lightweight linter checks
         cleanSrc = pkgs.lib.cleanSource ./.;
         sourceWithExts = exts:
@@ -140,39 +182,41 @@
           };
         };
       in {
-        packages = {
-          default = cmprss;
-          inherit cmprss;
+        packages =
+          {
+            default = cmprss;
+            inherit cmprss;
 
-          # Check code coverage with tarpaulin
-          coverage = craneLib.cargoTarpaulin (commonArgs
-            // {
-              # Use lcov output as thats far more widely supported
-              cargoTarpaulinExtraArgs = "--skip-clean --include-tests --output-dir $out --out lcov";
-            });
+            # Check code coverage with tarpaulin
+            coverage = craneLib.cargoTarpaulin (commonArgs
+              // {
+                # Use lcov output as thats far more widely supported
+                cargoTarpaulinExtraArgs = "--skip-clean --include-tests --output-dir $out --out lcov";
+              });
 
-          # Run clippy (and deny all warnings) on the crate source
-          clippy = craneLib.cargoClippy (commonArgs
-            // {
-              cargoClippyExtraArgs = "--all-targets -- --deny warnings";
-            });
+            # Run clippy (and deny all warnings) on the crate source
+            clippy = craneLib.cargoClippy (commonArgs
+              // {
+                cargoClippyExtraArgs = "--all-targets -- --deny warnings";
+              });
 
-          # Check docs build successfully
-          doc = craneLib.cargoDoc commonArgs;
+            # Check docs build successfully
+            doc = craneLib.cargoDoc commonArgs;
 
-          # Check formatting
-          fmt = craneLib.cargoFmt commonArgs;
+            # Check formatting
+            fmt = craneLib.cargoFmt commonArgs;
 
-          # Run tests with cargo-nextest
-          test = craneLib.cargoNextest commonArgs;
+            # Run tests with cargo-nextest
+            test = craneLib.cargoNextest commonArgs;
 
-          # Audit dependencies, check licenses, and detect duplicate crates
-          deny = craneLib.cargoDeny (commonArgs
-            // {
-              # advisories excluded: needs network access (blocked by nix sandbox)
-              cargoDenyChecks = "bans licenses sources";
-            });
-        };
+            # Audit dependencies, check licenses, and detect duplicate crates
+            deny = craneLib.cargoDeny (commonArgs
+              // {
+                # advisories excluded: needs network access (blocked by nix sandbox)
+                cargoDenyChecks = "bans licenses sources";
+              });
+          }
+          // staticMusl;
 
         checks =
           {
