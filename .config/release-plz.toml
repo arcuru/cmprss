@@ -26,6 +26,9 @@ After merging, the package will be automatically published to crates.io and a Gi
 # Add labels to release PRs for easier filtering
 pr_labels = ["release"]
 
+# Use git-cliff for changelog generation (all commits between tags)
+git_cliff_config = ".config/cliff.toml"
+
 # Customize GitHub release
 git_release_type = "auto"
 git_release_body = """
