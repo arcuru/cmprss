@@ -78,7 +78,7 @@ jobs:
 
       - name: Publish to Snap Store
         if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-        uses: snapcore/action-publish@214b86e5ca036ead1668c79571f947af2ee6e1d3 # v1.2.0
+        uses: snapcore/action-publish@214b86e5ca036ead1668c79afb81e550e6c54d40 # v1.2.0
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
         with:
