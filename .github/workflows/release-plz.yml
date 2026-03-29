@@ -62,7 +62,7 @@ jobs:
         id: check-pr
         if: github.event_name == 'push'
         run: |
-          PR_EXISTS=$(gh pr list --repo "$GITHUB_REPOSITORY" --head release-plz --state open --json number --jq 'length')
+          PR_EXISTS=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --json number,headRefName --jq '[.[] | select(.headRefName | startswith("release-plz"))] | length')
           echo "exists=$PR_EXISTS" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
