@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1](https://github.com/arcuru/cmprss/compare/v0.2.0...v0.2.1) - 2026-03-29
+
+### Other
+
+- migrate release flow to release-plz with publish workflow
+
 ## [0.2.0] - 2024-02-27
 
 ### Bug Fixes
