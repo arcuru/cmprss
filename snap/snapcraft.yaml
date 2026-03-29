@@ -8,8 +8,13 @@ description: |
   and zstd, including multi-level archives like .tar.gz and .tar.xz.
   All compression libraries are statically compiled in.
 
+title: cmprss
 license: AGPL-3.0-or-later
 source-code: https://github.com/arcuru/cmprss
+website: https://cmprss.dev
+contact: patrick@jackson.dev
+issues: https://github.com/arcuru/cmprss/issues
+donation: https://github.com/sponsors/arcuru
 
 base: core24
 confinement: strict
