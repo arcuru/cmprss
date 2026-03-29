@@ -27,7 +27,7 @@ After merging, the package will be automatically published to crates.io and a Gi
 pr_labels = ["release"]
 
 # Use git-cliff for changelog generation (all commits between tags)
-git_cliff_config = ".config/cliff.toml"
+changelog_config = ".config/cliff.toml"
 
 # Customize GitHub release
 git_release_type = "auto"
@@ -42,3 +42,4 @@ cargo install cmprss@{{ version }}
 
 **Repository:** https://github.com/arcuru/cmprss
 """
+
