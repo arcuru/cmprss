@@ -2,6 +2,95 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-03-29
+
+### Bug Fixes
+
+- Improve the compression level helpers
+- Disable progress bar in test.sh
+- Replace panics with proper Writer handling in all backends
+- Use correct changelog_config field in release-plz config
+- Correct snapcore/action-publish SHA pin
+- Match release-plz branch name prefix in PR detection
+- Fetch full git history for release-plz changelog generation
+
+### Documentation
+
+- Add installation instructions
+- Update README with badges
+- Note that compression libraries are statically compiled
+
+### Features
+
+- Adding support for unencrypted zip files
+- Improve tar with pipe support and more
+- Add progress bar to gzip
+- Add zstd support
+- Add lz4 support
+- Add static build for bzip2
+- Add multi-level compression support
+
+### Miscellaneous Tasks
+
+- Add code coverage uploading
+- Improving code coverage infrastructure
+- Fixing code coverage upload
+- Fixing typo in taskfile
+- Overhaul of flake to use flake-parts
+- Loosen cargo dep restrictions
+- Update nix deps
+- Taskfile cleanup
+- Remove unnecessary nixpkgs from flake-parts
+- Iterate on the flake
+- Add vscode files to gitignore
+- Iterate on the taskfile
+- Stop building tests in nix build .#cmprss
+- Fiddle with the nix build and ci
+- Pin versions of actions helpers
+- Add FUNDING.yml
+- Setting up Github<->Codeberg syncing
+- Add task clippy:fix
+- Run all Tasks even if no files have changed
+- Bump nix flake deps
+- Bump cargo deps
+- Taskfile fixups
+- Fix treefmt by pointing directly to a rustfmt binary
+- Adding pkg-config for updated cargo deps
+- Remove unused KNOWN_EXTENSIONS, replace unreachable fallbacks with asserts
+- Statically link xz/lzma, update README
+- Bump nix flake deps
+- Bump cargo deps
+- Add release profile optimizations and dev dep opt-level
+- Replace cargo-audit with cargo-deny for comprehensive dependency checks
+- Add typos and shfmt to treefmt
+- Add shellcheck, actionlint, statix, deadnix as nix checks
+- Switch from Taskfile (go-task) to justfile
+- Relicense from MIT to AGPL-3.0-or-later
+- Add fully static musl build via nix
+- Add snapcraft packaging and CI
+- Add missing metadata fields to snap
+- Migrate release flow to release-plz with publish workflow
+- Add git-cliff config for release-plz changelog generation
+
+### Refactor
+
+- Consolidate compression backends into dedicated module
+- Consolidate compressor lookup into single registry
+- Unify single-level and multi-level compressor selection
+- Rename MultiLevelCompressor to Pipeline and update module/comments
+- Use io::Error::other() and eliminate unwrap() calls
+- Migrate error handling from io::Error to anyhow
+
+### Styling
+
+- Pin rustfmt edition to 2024, simplify treefmt rustfmt config
+
+### Testing
+
+- Move comparison tests into Rust integration suite
+- Move the tar comparison tests into Rust
+- Add unit tests for pipeline extension scanning and trait methods
+
 ## [0.2.0] - 2024-02-27
 
 ### Bug Fixes
