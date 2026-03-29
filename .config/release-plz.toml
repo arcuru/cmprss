@@ -1,0 +1,41 @@
+# release-plz configuration
+# https://release-plz.dev/docs/config
+
+[workspace]
+# Tags like vX.Y.Z
+git_tag_name = "v{{ version }}"
+
+# Customize the pull request
+pr_name = "chore: release v{{ version }}"
+pr_body = """
+{% for release in releases -%}
+## Release v{{ release.next_version }}
+
+This PR prepares the next release. The changelog has been automatically generated from commit messages.
+
+**Before merging:**
+- Review the version bump ({{ release.previous_version }} → {{ release.next_version }})
+- Review semver compatibility: {{ release.semver_check }}
+- Edit `CHANGELOG.md` to add any custom commentary, context, or highlights
+- Ensure all changes are documented appropriately
+
+After merging, the package will be automatically published to crates.io and a GitHub release will be created with tag `v{{ release.next_version }}`.
+{% endfor -%}
+"""
+
+# Add labels to release PRs for easier filtering
+pr_labels = ["release"]
+
+# Customize GitHub release
+git_release_type = "auto"
+git_release_body = """
+{{ changelog }}
+
+---
+**Installation:**
+```bash
+cargo install cmprss@{{ version }}
+```
+
+**Repository:** https://github.com/arcuru/cmprss
+"""

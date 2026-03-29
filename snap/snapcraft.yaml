@@ -1,5 +1,5 @@
 name: cmprss
-version: "0.2.0"
+version: git
 summary: A compression multi-tool for the command line
 description: |
   Replace tar with something you can remember.

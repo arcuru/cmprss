@@ -1,0 +1,86 @@
+# Publish workflow — builds snap package and publishes to the Snap Store.
+#
+# Triggers:
+#   1. workflow_run: After Nix CI passes on main. Builds the snap to validate
+#      the packaging pipeline on every push to main.
+#
+#   2. release (published): After release-plz creates a GitHub release and tag.
+#      Builds the snap with the release version and publishes to the Snap Store.
+#
+#   3. workflow_dispatch: Manual retry for a failed release. Accepts a tag name
+#      input and publishes the snap for that tag.
+#
+# On release day, both triggers 1 and 2 fire independently — the workflow_run
+# from the merge to main, and the release event from release-plz tagging. This
+# is intentional: the dev run validates the pipeline, and the release run
+# publishes the versioned snap.
+
+name: Publish
+
+on:
+  workflow_run:
+    workflows: ["Nix"]
+    types: [completed]
+    branches: ["main"]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag to retry (e.g. v1.2.3)"
+        required: true
+        type: string
+
+jobs:
+  snap:
+    name: Snap
+    runs-on: ubuntu-latest
+    if: |
+      github.repository_owner == 'arcuru' &&
+      (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+    environment: ${{ (github.event_name == 'release' || github.event_name == 'workflow_dispatch') && 'publish' || '' }}
+    steps:
+      - name: Resolve ref
+        id: ref
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag_name }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          if [[ "$EVENT_NAME" == "release" ]]; then
+            echo "ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "ref=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=$RUN_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
+
+      - name: Set snap version from release tag
+        if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag_name }}
+        run: |
+          VERSION="${TAG#v}"
+          sed -i "s/^version: .*/version: \"${VERSION}\"/" snap/snapcraft.yaml
+
+      - uses: snapcore/action-build@d12445ae70c52b1ead8b8a0ac6635f0432af5c80 # v1.3.0
+        id: build
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: snap
+          path: ${{ steps.build.outputs.snap }}
+
+      - name: Publish to Snap Store
+        if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+        uses: snapcore/action-publish@214b86e5ca036ead1668c79571f947af2ee6e1d3 # v1.2.0
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        with:
+          snap: ${{ steps.build.outputs.snap }}
+          release: stable
