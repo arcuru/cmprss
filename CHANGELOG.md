@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.2.1] - 2026-03-29
+## [0.3.0] - 2026-03-29
 
 ### Bug Fixes
 
@@ -75,27 +75,21 @@ All notable changes to this project will be documented in this file.
 ### Refactor
 
 - Consolidate compression backends into dedicated module
-- Reorganize test files by backend and type
 - Consolidate compressor lookup into single registry
 - Unify single-level and multi-level compressor selection
 - Rename MultiLevelCompressor to Pipeline and update module/comments
 - Use io::Error::other() and eliminate unwrap() calls
 - Migrate error handling from io::Error to anyhow
-- Running auto-fixers
 
 ### Styling
 
-- Formatting
 - Pin rustfmt edition to 2024, simplify treefmt rustfmt config
 
 ### Testing
 
 - Move comparison tests into Rust integration suite
 - Move the tar comparison tests into Rust
-- Improve unit tests
 - Add unit tests for pipeline extension scanning and trait methods
-
-
 
 ## [0.2.0] - 2024-02-27
 
