@@ -59,14 +59,8 @@ impl Default for Zstd {
 
 impl Zstd {
     pub fn new(args: &ZstdArgs) -> Zstd {
-        let validator = ZstdCompressionValidator;
-        let mut level = args.level_args.level.level;
-
-        // Validate and clamp the level to zstd's valid range
-        level = validator.validate_and_clamp_level(level);
-
         Zstd {
-            compression_level: level,
+            compression_level: args.level_args.resolve(&ZstdCompressionValidator),
             progress_args: args.progress_args,
         }
     }

@@ -35,14 +35,8 @@ impl Default for Gzip {
 
 impl Gzip {
     pub fn new(args: &GzipArgs) -> Gzip {
-        let validator = DefaultCompressionValidator;
-        let level = args.level_args.level.level;
-
-        // Validate and clamp the level to gzip's valid range
-        let level = validator.validate_and_clamp_level(level);
-
         Gzip {
-            compression_level: level,
+            compression_level: args.level_args.resolve(&DefaultCompressionValidator),
             progress_args: args.progress_args,
         }
     }

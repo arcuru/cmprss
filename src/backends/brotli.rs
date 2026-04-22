@@ -67,11 +67,8 @@ impl Default for Brotli {
 
 impl Brotli {
     pub fn new(args: &BrotliArgs) -> Brotli {
-        let validator = BrotliCompressionValidator;
-        let level = validator.validate_and_clamp_level(args.level_args.level.level);
-
         Brotli {
-            compression_level: level,
+            compression_level: args.level_args.resolve(&BrotliCompressionValidator),
             progress_args: args.progress_args,
         }
     }

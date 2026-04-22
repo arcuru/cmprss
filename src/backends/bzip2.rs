@@ -64,11 +64,8 @@ impl Default for Bzip2 {
 
 impl Bzip2 {
     pub fn new(args: &Bzip2Args) -> Self {
-        let validator = Bzip2CompressionValidator;
-        let level = validator.validate_and_clamp_level(args.level_args.level.level);
-
         Bzip2 {
-            level,
+            level: args.level_args.resolve(&Bzip2CompressionValidator),
             progress_args: args.progress_args,
         }
     }

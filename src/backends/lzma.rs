@@ -59,11 +59,8 @@ impl Default for Lzma {
 
 impl Lzma {
     pub fn new(args: &LzmaArgs) -> Lzma {
-        let validator = DefaultCompressionValidator;
-        let level = validator.validate_and_clamp_level(args.level_args.level.level);
-
         Lzma {
-            level,
+            level: args.level_args.resolve(&DefaultCompressionValidator),
             progress_args: args.progress_args,
         }
     }

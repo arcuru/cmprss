@@ -155,6 +155,16 @@ pub struct LevelArgs {
     pub level: CompressionLevel,
 }
 
+impl LevelArgs {
+    /// Resolve the user-requested compression level against a codec-specific
+    /// validator, clamping to the validator's range. This is the standard way
+    /// for a backend to turn `--level N` into a concrete integer it can pass
+    /// to the underlying library.
+    pub fn resolve(&self, validator: &impl CompressionLevelValidator) -> i32 {
+        validator.validate_and_clamp_level(self.level.level)
+    }
+}
+
 /// Common interface for all compressor implementations
 #[allow(unused_variables)]
 pub trait Compressor: Send + Sync {
