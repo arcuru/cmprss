@@ -12,19 +12,21 @@ categories = ["command-line-utilities", "compression"]
 
 [dependencies]
 anyhow = "1"
+brotli = "8"
 bzip2 = { version = "0.6", features = ["static"] }
 clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
+clap_mangen = "0.2"
 flate2 = "1"
 indicatif = "0.18"
 is-terminal = "0.4"
+lz4_flex = "0.13"
+snap = "1"
 tar = "0.4"
+tempfile = "3"
 xz2 = { version = "0.1", features = ["static"] }
 zip = "8"
-tempfile = "3"
 zstd = "0.13"
-lz4_flex = "0.13"
-brotli = "8"
-snap = "1"
 
 [dev-dependencies]
 assert_cmd = "2"
