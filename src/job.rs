@@ -13,6 +13,92 @@ use std::path::{Path, PathBuf};
 use crate::backends::{self, Pipeline};
 use crate::utils::{CmprssInput, CmprssOutput, CommonArgs, Compressor, Result};
 
+/// Extract an action hint from the CLI flags. Returns `Action::Unknown` when
+/// the user hasn't specified `--compress`/`--extract`/`--decompress`.
+fn action_from_flags(args: &CommonArgs) -> Action {
+    if args.compress {
+        Action::Compress
+    } else if args.extract || args.decompress {
+        Action::Extract
+    } else {
+        Action::Unknown
+    }
+}
+
+/// Partition the CLI path arguments (`-i`, `-o`, and the positional `io_list`)
+/// into a list of input paths and an optional output path.
+///
+/// The heuristic for which trailing `io_list` entry becomes the output:
+/// * If it doesn't exist on disk → output (we'll create it).
+/// * If it exists and is a directory, and the action hint is `Extract` →
+///   output (extract into the directory).
+/// * Otherwise → treat as an input. This preserves the existing behavior for
+///   `cmprss tar file1.txt file2.txt existing_dir/`, where the trailing
+///   directory is treated as another input to archive.
+fn partition_paths(
+    args: &CommonArgs,
+    action_hint: Action,
+) -> Result<(Vec<PathBuf>, Option<PathBuf>)> {
+    let mut inputs = Vec::new();
+    if let Some(in_file) = &args.input {
+        inputs
+            .push(get_path(in_file).ok_or_else(|| anyhow!("Specified input path does not exist"))?);
+    }
+
+    let mut output: Option<PathBuf> = match &args.output {
+        Some(output) => {
+            let path = PathBuf::from(output);
+            if path.try_exists()? && !path.is_dir() {
+                bail!("Specified output path already exists");
+            }
+            Some(path)
+        }
+        None => None,
+    };
+
+    let mut io_list = args.io_list.clone();
+    if output.is_none()
+        && let Some(possible_output) = io_list.last()
+    {
+        let path = PathBuf::from(possible_output);
+        if !path.try_exists()? {
+            output = Some(path);
+            io_list.pop();
+        } else if path.is_dir() && action_hint == Action::Extract {
+            // Only treat an existing directory as the output when the user
+            // hinted extraction. In Compress/Unknown, we keep it as another
+            // input — this matches e.g. `cmprss tar dir1/ dir2/`.
+            output = Some(path);
+            io_list.pop();
+        }
+        // TODO: check for scenarios where we want to append to an existing archive.
+    }
+
+    for input in &io_list {
+        inputs.push(get_path(input).ok_or_else(|| anyhow!("Specified input path does not exist"))?);
+    }
+
+    Ok((inputs, output))
+}
+
+/// Turn the collected input paths into a `CmprssInput`, falling back to
+/// stdin when no paths were given and stdin is piped.
+fn resolve_input(inputs: Vec<PathBuf>, args: &CommonArgs) -> Result<CmprssInput> {
+    if !inputs.is_empty() {
+        return Ok(CmprssInput::Path(inputs));
+    }
+    if !std::io::stdin().is_terminal() && !args.ignore_pipes && !args.ignore_stdin {
+        return Ok(CmprssInput::Pipe(std::io::stdin()));
+    }
+    bail!("No specified input");
+}
+
+/// Whether we can send the output to stdout (piped, and the user hasn't
+/// suppressed pipe inference).
+fn stdout_pipe_usable(args: &CommonArgs) -> bool {
+    !std::io::stdout().is_terminal() && !args.ignore_pipes && !args.ignore_stdout
+}
+
 /// Defines a single compress/extract action to take.
 #[derive(Debug)]
 pub struct Job {
@@ -32,102 +118,16 @@ pub enum Action {
 /// Parse the common args and determine the details of the job requested.
 pub fn get_job(compressor: Option<Box<dyn Compressor>>, common_args: &CommonArgs) -> Result<Job> {
     let mut compressor = compressor;
-    let mut action = {
-        if common_args.compress {
-            Action::Compress
-        } else if common_args.extract || common_args.decompress {
-            Action::Extract
-        } else {
-            Action::Unknown
-        }
-    };
+    let mut action = action_from_flags(common_args);
 
-    let mut inputs = Vec::new();
-    if let Some(in_file) = &common_args.input {
-        match get_path(in_file) {
-            Some(path) => inputs.push(path),
-            None => {
-                bail!("Specified input path does not exist");
-            }
-        }
-    }
+    let (input_paths, output_path) = partition_paths(common_args, action)?;
 
-    let mut output = match &common_args.output {
-        Some(output) => {
-            let path = Path::new(output);
-            if path.try_exists()? && !path.is_dir() {
-                // Output path exists, bail out
-                bail!("Specified output path already exists");
-            }
-            Some(path)
-        }
-        None => None,
-    };
+    let cmprss_input = resolve_input(input_paths, common_args)?;
 
-    // Process the io_list, check if there is an output first
-    let mut io_list = common_args.io_list.clone();
-    if output.is_none()
-        && let Some(possible_output) = common_args.io_list.last()
-    {
-        let path = Path::new(possible_output);
-        if !path.try_exists()? {
-            // Use the given path if it doesn't exist
-            output = Some(path);
-            io_list.pop();
-        } else if path.is_dir() {
-            match action {
-                Action::Compress => {
-                    // A directory can potentially be a target output location or
-                    // an input, for now assume it is an input.
-                }
-                Action::Extract => {
-                    // Can extract to a directory, and it wouldn't make any sense as an input
-                    output = Some(path);
-                    io_list.pop();
-                }
-                _ => {
-                    // TODO: don't know if this is an input or output, assume we're compressing this directory
-                    // This does cause problems for inferencing "cat archive.tar | cmprss tar ."
-                    // Probably need to add some special casing
-                }
-            };
-        } else {
-            // TODO: check for scenarios where we want to append to an existing archive
-        }
-    }
-
-    // Validate the specified inputs
-    // Everything in the io_list should be an input
-    for input in &io_list {
-        if let Some(path) = get_path(input) {
-            inputs.push(path);
-        } else {
-            bail!("Specified input path does not exist");
-        }
-    }
-
-    // Fallback to stdin/stdout if we're missing files
-    let cmprss_input = match inputs.is_empty() {
-        true => {
-            if !std::io::stdin().is_terminal()
-                && !&common_args.ignore_pipes
-                && !&common_args.ignore_stdin
-            {
-                CmprssInput::Pipe(std::io::stdin())
-            } else {
-                bail!("No specified input");
-            }
-        }
-        false => CmprssInput::Path(inputs),
-    };
-
-    let cmprss_output = match output {
-        Some(path) => CmprssOutput::Path(path.to_path_buf()),
+    let cmprss_output = match output_path {
+        Some(path) => CmprssOutput::Path(path),
         None => {
-            if !std::io::stdout().is_terminal()
-                && !&common_args.ignore_pipes
-                && !&common_args.ignore_stdout
-            {
+            if stdout_pipe_usable(common_args) {
                 CmprssOutput::Pipe(std::io::stdout())
             } else {
                 match action {
