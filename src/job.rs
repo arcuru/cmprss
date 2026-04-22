@@ -49,8 +49,8 @@ fn partition_paths(
     let mut output: Option<PathBuf> = match &args.output {
         Some(output) => {
             let path = PathBuf::from(output);
-            if path.try_exists()? && !path.is_dir() {
-                bail!("Specified output path already exists");
+            if !args.force && path.try_exists()? && !path.is_dir() {
+                bail!("Specified output path already exists (use --force to overwrite)");
             }
             Some(path)
         }
@@ -69,6 +69,12 @@ fn partition_paths(
             // Only treat an existing directory as the output when the user
             // hinted extraction. In Compress/Unknown, we keep it as another
             // input — this matches e.g. `cmprss tar dir1/ dir2/`.
+            output = Some(path);
+            io_list.pop();
+        } else if !path.is_dir() && args.force {
+            // With --force, a trailing existing file is taken as the output
+            // (to overwrite). Without --force we fall through to treating it
+            // as another input.
             output = Some(path);
             io_list.pop();
         }

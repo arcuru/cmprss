@@ -1,3 +1,7 @@
+// Each `tests/*.rs` file compiles as its own crate, so any helper not used by
+// a particular file shows up as dead code in that crate. Allow it globally.
+#![allow(dead_code)]
+
 use assert_fs::prelude::*;
 use predicates::prelude::*;
 
@@ -14,7 +18,6 @@ pub fn create_working_dir() -> Result<assert_fs::TempDir, Box<dyn std::error::Er
     Ok(assert_fs::TempDir::new()?)
 }
 
-#[allow(dead_code)]
 pub fn create_persistent_working_dir() -> Result<assert_fs::TempDir, Box<dyn std::error::Error>> {
     Ok(assert_fs::TempDir::new()?.into_persistent())
 }

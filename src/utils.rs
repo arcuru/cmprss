@@ -55,6 +55,10 @@ pub struct CommonArgs {
     /// Ignore stdout when inferring I/O
     #[arg(long)]
     pub ignore_stdout: bool,
+
+    /// Overwrite the output path if it already exists.
+    #[arg(short, long)]
+    pub force: bool,
 }
 
 /// Trait for validating compression levels for different compressors
