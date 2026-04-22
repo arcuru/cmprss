@@ -3,6 +3,7 @@ mod bzip2;
 mod gzip;
 mod lz4;
 mod pipeline;
+mod snappy;
 mod tar;
 mod xz;
 mod zip;
@@ -13,6 +14,7 @@ pub use bzip2::{Bzip2, Bzip2Args};
 pub use gzip::{Gzip, GzipArgs};
 pub use lz4::{Lz4, Lz4Args};
 pub use pipeline::Pipeline;
+pub use snappy::{Snappy, SnappyArgs};
 pub use tar::{Tar, TarArgs};
 pub use xz::{Xz, XzArgs};
 pub use zip::{Zip, ZipArgs};
@@ -32,6 +34,7 @@ pub fn compressor_from_str(s: &str) -> Option<Box<dyn Compressor>> {
         "zstd" | "zst" => Some(Box::<Zstd>::default()),
         "lz4" => Some(Box::<Lz4>::default()),
         "brotli" | "br" => Some(Box::<Brotli>::default()),
+        "snappy" | "sz" => Some(Box::<Snappy>::default()),
         _ => None,
     }
 }

@@ -51,6 +51,10 @@ enum Format {
     /// brotli compression
     #[clap(visible_alias = "br")]
     Brotli(BrotliArgs),
+
+    /// snappy framed compression
+    #[clap(visible_alias = "sz")]
+    Snappy(SnappyArgs),
 }
 
 /// Get the input filename or return a default file
@@ -513,6 +517,7 @@ fn main() {
         Some(Format::Zstd(a)) => command(Some(Box::new(Zstd::new(&a))), &a.common_args),
         Some(Format::Lz4(a)) => command(Some(Box::new(Lz4::new(&a))), &a.common_args),
         Some(Format::Brotli(a)) => command(Some(Box::new(Brotli::new(&a))), &a.common_args),
+        Some(Format::Snappy(a)) => command(Some(Box::new(Snappy::new(&a))), &a.common_args),
         _ => command(None, &args.base_args),
     }
     .unwrap_or_else(|e| {
@@ -542,6 +547,7 @@ mod tests {
         assert_eq!(compressor_name("file.zst"), Some("zstd".into()));
         assert_eq!(compressor_name("file.lz4"), Some("lz4".into()));
         assert_eq!(compressor_name("file.br"), Some("brotli".into()));
+        assert_eq!(compressor_name("file.sz"), Some("snappy".into()));
         assert_eq!(compressor_name("file.tar"), Some("tar".into()));
         assert_eq!(compressor_name("file.zip"), Some("zip".into()));
     }
