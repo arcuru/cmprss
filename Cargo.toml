@@ -23,6 +23,8 @@ zip = "8"
 tempfile = "3"
 zstd = "0.13"
 lz4_flex = "0.13"
+brotli = "8"
+snap = "1"
 
 [dev-dependencies]
 assert_cmd = "2"

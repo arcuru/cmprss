@@ -1,3 +1,4 @@
+mod brotli;
 mod bzip2;
 mod gzip;
 mod lz4;
@@ -7,6 +8,7 @@ mod xz;
 mod zip;
 mod zstd;
 
+pub use brotli::{Brotli, BrotliArgs};
 pub use bzip2::{Bzip2, Bzip2Args};
 pub use gzip::{Gzip, GzipArgs};
 pub use lz4::{Lz4, Lz4Args};
@@ -29,6 +31,7 @@ pub fn compressor_from_str(s: &str) -> Option<Box<dyn Compressor>> {
         "zip" => Some(Box::<Zip>::default()),
         "zstd" | "zst" => Some(Box::<Zstd>::default()),
         "lz4" => Some(Box::<Lz4>::default()),
+        "brotli" | "br" => Some(Box::<Brotli>::default()),
         _ => None,
     }
 }
