@@ -98,6 +98,15 @@ cmprss archive.tar archive.tar.gz
 cmprss archive.tar.xz archive.tar
 ```
 
+The common compound shortcut extensions also work and behave identically to their long forms:
+
+| Shortcut       | Equivalent to |
+| -------------- | ------------- |
+| `.tgz`         | `.tar.gz`     |
+| `.tbz`/`.tbz2` | `.tar.bz2`    |
+| `.txz`         | `.tar.xz`     |
+| `.tzst`        | `.tar.zst`    |
+
 Pipes can still be used if preferred:
 
 ```bash

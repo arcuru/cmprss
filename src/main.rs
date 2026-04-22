@@ -89,6 +89,19 @@ struct Job {
     action: Action,
 }
 
+/// Expand a compound shortcut extension like `.tgz` into its equivalent
+/// compressor chain, in innermost-to-outermost order. Returns `None` for
+/// extensions that aren't a known shortcut.
+fn expand_shortcut_ext(ext: &str) -> Option<&'static [&'static str]> {
+    match ext {
+        "tgz" => Some(&["tar", "gz"]),
+        "tbz" | "tbz2" => Some(&["tar", "bz2"]),
+        "txz" => Some(&["tar", "xz"]),
+        "tzst" => Some(&["tar", "zst"]),
+        _ => None,
+    }
+}
+
 /// Get a compressor pipeline from a filename by scanning extensions right-to-left
 fn get_compressor_from_filename(filename: &Path) -> Option<Box<dyn Compressor>> {
     let file_name = filename.file_name()?.to_str()?;
@@ -101,9 +114,17 @@ fn get_compressor_from_filename(filename: &Path) -> Option<Box<dyn Compressor>> 
     // Scan extensions right-to-left, collecting known compressors
     // until hitting an unknown extension or the base name.
     // e.g., "a.b.tar.gz" → gz ✓, tar ✓, b ✗ stop → [gz, tar]
+    // Compound shortcuts like "tgz" expand to their component chain, so
+    // "archive.tgz" behaves identically to "archive.tar.gz".
     let mut compressor_names: Vec<String> = Vec::new();
     for ext in parts[1..].iter().rev() {
-        if let Some(c) = backends::compressor_from_str(ext) {
+        if let Some(chain) = expand_shortcut_ext(ext) {
+            // chain is innermost→outermost; we push in right-to-left order
+            // (outermost first) to match how we're walking the filename.
+            for name in chain.iter().rev() {
+                compressor_names.push((*name).to_string());
+            }
+        } else if let Some(c) = backends::compressor_from_str(ext) {
             compressor_names.push(c.name().to_string());
         } else {
             break;
@@ -563,6 +584,30 @@ mod tests {
         assert_eq!(compressor_name("archive.tar.xz"), Some("xz".into()));
         assert_eq!(compressor_name("archive.tar.bz2"), Some("bzip2".into()));
         assert_eq!(compressor_name("archive.tar.zst"), Some("zstd".into()));
+    }
+
+    #[test]
+    fn test_shortcut_extensions() {
+        // Shortcut extensions resolve to a tar + outer compressor pipeline,
+        // so the reported name is the outer compressor (same as the long form).
+        assert_eq!(compressor_name("archive.tgz"), Some("gzip".into()));
+        assert_eq!(compressor_name("archive.tbz"), Some("bzip2".into()));
+        assert_eq!(compressor_name("archive.tbz2"), Some("bzip2".into()));
+        assert_eq!(compressor_name("archive.txz"), Some("xz".into()));
+        assert_eq!(compressor_name("archive.tzst"), Some("zstd".into()));
+    }
+
+    #[test]
+    fn test_shortcut_extensions_extract_to_directory() {
+        // Shortcuts are tar-based, so they must extract to a directory.
+        for path in ["a.tgz", "a.tbz", "a.tbz2", "a.txz", "a.tzst"] {
+            let c = get_compressor_from_filename(Path::new(path)).unwrap();
+            assert_eq!(
+                c.default_extracted_target(),
+                ExtractedTarget::DIRECTORY,
+                "{path} should extract to a directory",
+            );
+        }
     }
 
     #[test]
