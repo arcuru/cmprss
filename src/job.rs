@@ -119,6 +119,10 @@ pub struct Job {
 pub enum Action {
     Compress,
     Extract,
+    /// Print the archive's file listing to stdout. Only meaningful for
+    /// container formats; stream codecs fall through to `Compressor::list`'s
+    /// default bail.
+    List,
 }
 
 /// Parse the common args and determine the details of the job requested.
@@ -131,6 +135,23 @@ pub enum Action {
 ///    branches on how the output is determined: an explicit path, stdout pipe,
 ///    or a filename we invent from the resolved compressor + action.
 pub fn get_job(compressor: Option<Box<dyn Compressor>>, common_args: &CommonArgs) -> Result<Job> {
+    // --list short-circuits the output/action machinery: there's no output
+    // file, the action is fixed, and we only need the input and compressor.
+    if common_args.list {
+        let (input_paths, _) = partition_paths(common_args, Some(Action::List))?;
+        let input = resolve_input(input_paths, common_args)?;
+        let compressor = compressor
+            .or_else(|| get_compressor_from_filename(get_input_filename(&input).ok()?))
+            .ok_or_else(|| anyhow!("Could not determine compressor to use"))?;
+        return Ok(Job {
+            compressor,
+            input,
+            // List writes to stdout directly; this output slot is unused.
+            output: CmprssOutput::Pipe(std::io::stdout()),
+            action: Action::List,
+        });
+    }
+
     let action_hint = action_from_flags(common_args);
     let (input_paths, output_path) = partition_paths(common_args, action_hint)?;
     let input = resolve_input(input_paths, common_args)?;
@@ -166,6 +187,8 @@ pub fn get_job(compressor: Option<Box<dyn Compressor>>, common_args: &CommonArgs
     let default_name = match action {
         Action::Compress => compressor.default_compressed_filename(get_input_filename(&input)?),
         Action::Extract => compressor.default_extracted_filename(get_input_filename(&input)?),
+        // List short-circuits above; finalize_without_output never returns it.
+        Action::List => unreachable!("List is handled before Branch 3"),
     };
     Ok(Job {
         compressor,
@@ -211,6 +234,9 @@ fn finalize_without_output(
                 .ok_or_else(|| anyhow!("Must specify a compressor"))?;
             Ok((c, Action::Extract))
         }
+        // List is handled by the short-circuit at the top of get_job and
+        // never flows into this helper.
+        Some(Action::List) => unreachable!("List is handled before Branch 3"),
         None => match compressor {
             Some(c) => {
                 // Compare the compressor's extension against the input's.
@@ -245,6 +271,8 @@ fn fill_missing_from_io(
                 *compressor = get_compressor_from_filename(path);
             }
         }
+        // List is handled by the short-circuit at the top of get_job.
+        Some(Action::List) => unreachable!("List is handled before fill_missing_from_io"),
         Some(Action::Extract) => {
             if let CmprssInput::Path(paths) = input {
                 if paths.len() != 1 {

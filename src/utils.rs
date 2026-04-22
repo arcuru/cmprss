@@ -59,6 +59,10 @@ pub struct CommonArgs {
     /// Overwrite the output path if it already exists.
     #[arg(short, long)]
     pub force: bool,
+
+    /// List the contents of an archive (for container formats like tar and zip).
+    #[arg(short, long)]
+    pub list: bool,
 }
 
 /// Trait for validating compression levels for different compressors
@@ -233,6 +237,19 @@ pub trait Compressor: Send + Sync {
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result;
 
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result;
+
+    /// List the contents of the archive to stdout.
+    ///
+    /// The default implementation bails: only container formats — `tar`,
+    /// `zip`, and pipelines whose innermost layer is one of those — can
+    /// meaningfully enumerate their contents. Stream codecs (gzip, xz, …)
+    /// just compress a single byte stream and have nothing to list.
+    fn list(&self, _input: CmprssInput) -> Result {
+        anyhow::bail!(
+            "{} archives cannot be listed; only container formats (tar, zip) support --list",
+            self.name()
+        )
+    }
 }
 
 impl fmt::Debug for dyn Compressor {

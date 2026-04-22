@@ -322,6 +322,54 @@ impl Compressor for Pipeline {
         }
         Ok(())
     }
+
+    fn list(&self, input: CmprssInput) -> Result {
+        debug_assert!(!self.compressors.is_empty(), "pipeline is never empty");
+
+        if self.compressors.len() == 1 {
+            return self.compressors[0].list(input);
+        }
+
+        // Same plumbing as `extract`, except the innermost compressor lists
+        // its entries to stdout instead of unpacking to an output path. Outer
+        // layers still need to decompress into an in-memory pipe so that the
+        // innermost container format sees plain archive bytes.
+        let mut op_extractors: Vec<Box<dyn Compressor>> = self
+            .compressors
+            .iter()
+            .rev()
+            .map(|c| Self::create_compressor(c.name()))
+            .collect::<Result<Vec<_>>>()?;
+
+        let mut handles = Vec::new();
+        let mut current_thread_input = input;
+        let buffer_size = 64 * 1024;
+
+        for _ in 0..op_extractors.len() - 1 {
+            let extractor = op_extractors.remove(0);
+            let (sender, receiver) = channel::<Vec<u8>>();
+            let pipe_writer = PipeWriter::new(sender, buffer_size);
+            let stage_output = CmprssOutput::Writer(WriteWrapper(Box::new(pipe_writer)));
+            let next_stage_input =
+                CmprssInput::Reader(ReadWrapper(Box::new(PipeReader::new(receiver))));
+
+            let stage_input = current_thread_input;
+            current_thread_input = next_stage_input;
+
+            let handle = thread::spawn(move || extractor.extract(stage_input, stage_output));
+            handles.push(handle);
+        }
+
+        let innermost = op_extractors.remove(0);
+        innermost.list(current_thread_input)?;
+
+        for handle in handles {
+            handle
+                .join()
+                .map_err(|_| anyhow!("Extraction thread panicked"))??;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

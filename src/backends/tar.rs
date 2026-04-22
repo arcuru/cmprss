@@ -3,7 +3,7 @@ extern crate tar;
 use anyhow::bail;
 use clap::Args;
 use std::fs::File;
-use std::io::{self, Seek, SeekFrom, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use tar::{Archive, Builder};
 use tempfile::tempfile;
 
@@ -123,6 +123,28 @@ impl Compressor for Tar {
                 }
             },
         }
+    }
+
+    fn list(&self, input: CmprssInput) -> Result {
+        let reader: Box<dyn Read> = match input {
+            CmprssInput::Path(paths) => {
+                if paths.len() != 1 {
+                    bail!("tar listing expects a single archive file");
+                }
+                Box::new(File::open(&paths[0])?)
+            }
+            CmprssInput::Pipe(stdin) => Box::new(stdin),
+            CmprssInput::Reader(reader) => reader.0,
+        };
+        let mut archive = Archive::new(reader);
+        let stdout = io::stdout();
+        let mut out = stdout.lock();
+        for entry in archive.entries()? {
+            let entry = entry?;
+            let path = entry.path()?;
+            writeln!(out, "{}", path.display())?;
+        }
+        Ok(())
     }
 }
 

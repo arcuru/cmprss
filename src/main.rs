@@ -90,6 +90,7 @@ fn command(compressor: Option<Box<dyn Compressor>>, args: &CommonArgs) -> Result
     match job.action {
         Action::Compress => job.compressor.compress(job.input, job.output),
         Action::Extract => job.compressor.extract(job.input, job.output),
+        Action::List => job.compressor.list(job.input),
     }
 }
 

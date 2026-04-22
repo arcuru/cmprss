@@ -158,6 +158,43 @@ impl Compressor for Zip {
             },
         }
     }
+
+    fn list(&self, input: CmprssInput) -> Result {
+        // ZipArchive requires a seekable reader. For non-path inputs we must
+        // buffer into a tempfile first.
+        let stdout = io::stdout();
+        let mut out = stdout.lock();
+        match input {
+            CmprssInput::Path(paths) => {
+                if paths.len() != 1 {
+                    bail!("zip listing expects a single archive file");
+                }
+                let archive = ZipArchive::new(File::open(&paths[0])?)?;
+                for name in archive.file_names() {
+                    writeln!(out, "{}", name)?;
+                }
+            }
+            CmprssInput::Pipe(mut pipe) => {
+                let mut temp = tempfile()?;
+                io::copy(&mut pipe, &mut temp)?;
+                temp.seek(SeekFrom::Start(0))?;
+                let archive = ZipArchive::new(temp)?;
+                for name in archive.file_names() {
+                    writeln!(out, "{}", name)?;
+                }
+            }
+            CmprssInput::Reader(mut reader) => {
+                let mut temp = tempfile()?;
+                io::copy(&mut reader, &mut temp)?;
+                temp.seek(SeekFrom::Start(0))?;
+                let archive = ZipArchive::new(temp)?;
+                for name in archive.file_names() {
+                    writeln!(out, "{}", name)?;
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 fn add_directory<W: Write + Seek>(zip: &mut ZipWriter<W>, base: &Path, path: &Path) -> Result {
