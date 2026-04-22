@@ -1,10 +1,9 @@
+use super::stream::{guard_file_output, open_input, open_output};
 use crate::progress::{ProgressArgs, copy_with_progress};
 use crate::utils::*;
-use anyhow::bail;
 use brotli::{CompressorWriter, Decompressor};
 use clap::Args;
-use std::fs::File;
-use std::io::{self, BufReader, BufWriter, Read, Write};
+use std::io::{self, Write};
 
 /// Brotli buffer size used when constructing the encoder/decoder.
 const BROTLI_BUFFER_SIZE: usize = 4096;
@@ -91,36 +90,8 @@ impl Compressor for Brotli {
 
     /// Compress an input file or pipe to a brotli archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        if let CmprssOutput::Path(out_path) = &output
-            && out_path.is_dir()
-        {
-            bail!(
-                "Brotli does not support compressing to a directory. Please specify an output file."
-            );
-        }
-        if let CmprssInput::Path(input_paths) = &input {
-            for x in input_paths {
-                if x.is_dir() {
-                    bail!(
-                        "Brotli does not support compressing a directory. Please specify only files."
-                    );
-                }
-            }
-        }
-        let mut file_size = None;
-        let mut input_stream: Box<dyn Read + Send> = match input {
-            CmprssInput::Path(paths) => {
-                if paths.len() > 1 {
-                    bail!("Multiple input files not supported for brotli");
-                }
-                let path = &paths[0];
-                file_size = Some(std::fs::metadata(path)?.len());
-                Box::new(BufReader::new(File::open(path)?))
-            }
-            CmprssInput::Pipe(stdin) => Box::new(BufReader::new(stdin)),
-            CmprssInput::Reader(reader) => reader.0,
-        };
-
+        guard_file_output(&output, "Brotli")?;
+        let (mut input_stream, file_size) = open_input(input, "Brotli")?;
         let quality = self.compression_level as u32;
 
         if let CmprssOutput::Writer(writer) = output {
@@ -129,11 +100,7 @@ impl Compressor for Brotli {
             io::copy(&mut input_stream, &mut encoder)?;
             encoder.flush()?;
         } else {
-            let output_stream: Box<dyn Write + Send> = match &output {
-                CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
-                CmprssOutput::Pipe(stdout) => Box::new(BufWriter::new(stdout)),
-                CmprssOutput::Writer(_) => unreachable!(),
-            };
+            let output_stream = open_output(&output)?;
             let mut encoder =
                 CompressorWriter::new(output_stream, BROTLI_BUFFER_SIZE, quality, BROTLI_LGWIN);
             copy_with_progress(
@@ -152,38 +119,14 @@ impl Compressor for Brotli {
 
     /// Extract a brotli archive to an output file or pipe
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        if let CmprssOutput::Path(out_path) = &output
-            && out_path.is_dir()
-        {
-            bail!(
-                "Brotli does not support extracting to a directory. Please specify an output file."
-            );
-        }
-
-        let mut file_size = None;
-        let input_stream: Box<dyn Read + Send> = match input {
-            CmprssInput::Path(paths) => {
-                if paths.len() > 1 {
-                    bail!("Multiple input files not supported for brotli extraction");
-                }
-                let path = &paths[0];
-                file_size = Some(std::fs::metadata(path)?.len());
-                Box::new(BufReader::new(File::open(path)?))
-            }
-            CmprssInput::Pipe(stdin) => Box::new(BufReader::new(stdin)),
-            CmprssInput::Reader(reader) => reader.0,
-        };
-
+        guard_file_output(&output, "Brotli")?;
+        let (input_stream, file_size) = open_input(input, "Brotli")?;
         let mut decoder = Decompressor::new(input_stream, BROTLI_BUFFER_SIZE);
 
         if let CmprssOutput::Writer(mut writer) = output {
             io::copy(&mut decoder, &mut writer)?;
         } else {
-            let mut output_stream: Box<dyn Write + Send> = match &output {
-                CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
-                CmprssOutput::Pipe(stdout) => Box::new(BufWriter::new(stdout)),
-                CmprssOutput::Writer(_) => unreachable!(),
-            };
+            let mut output_stream = open_output(&output)?;
             copy_with_progress(
                 &mut decoder,
                 &mut output_stream,

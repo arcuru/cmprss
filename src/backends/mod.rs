@@ -5,6 +5,7 @@ mod lz4;
 mod lzma;
 mod pipeline;
 mod snappy;
+mod stream;
 mod tar;
 mod xz;
 mod zip;

@@ -1,3 +1,4 @@
+use super::stream::{guard_file_output, open_input, open_output};
 use crate::{
     progress::{ProgressArgs, copy_with_progress},
     utils::{
@@ -5,14 +6,10 @@ use crate::{
         ExtractedTarget, LevelArgs, Result,
     },
 };
-use anyhow::bail;
 use bzip2::Compression;
 use bzip2::write::{BzDecoder, BzEncoder};
 use clap::Args;
-use std::{
-    fs::File,
-    io::{self, BufReader, BufWriter, Read, Write},
-};
+use std::io;
 
 /// BZip2-specific compression validator (1-9 range)
 #[derive(Debug, Clone, Copy)]
@@ -95,29 +92,16 @@ impl Compressor for Bzip2 {
 
     /// Compress an input file or pipe to a bz2 archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        let mut file_size = None;
-        let mut input_stream = match input {
-            CmprssInput::Path(paths) => {
-                if paths.len() > 1 {
-                    bail!("Multiple input files not supported for bzip2");
-                }
-                let path = &paths[0];
-                file_size = Some(std::fs::metadata(path)?.len());
-                Box::new(BufReader::new(File::open(path)?)) as Box<dyn Read + Send>
-            }
-            CmprssInput::Pipe(pipe) => Box::new(pipe) as Box<dyn Read + Send>,
-            CmprssInput::Reader(reader) => reader.0,
-        };
+        guard_file_output(&output, "Bzip2")?;
+        let (mut input_stream, file_size) = open_input(input, "Bzip2")?;
+        let level = Compression::new(self.level as u32);
+
         if let CmprssOutput::Writer(writer) = output {
-            let mut encoder = BzEncoder::new(writer, Compression::new(self.level as u32));
+            let mut encoder = BzEncoder::new(writer, level);
             io::copy(&mut input_stream, &mut encoder)?;
         } else {
-            let output_stream: Box<dyn Write + Send> = match &output {
-                CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
-                CmprssOutput::Pipe(pipe) => Box::new(pipe),
-                CmprssOutput::Writer(_) => unreachable!(),
-            };
-            let mut encoder = BzEncoder::new(output_stream, Compression::new(self.level as u32));
+            let output_stream = open_output(&output)?;
+            let mut encoder = BzEncoder::new(output_stream, level);
             copy_with_progress(
                 &mut input_stream,
                 &mut encoder,
@@ -133,28 +117,14 @@ impl Compressor for Bzip2 {
 
     /// Extract a bz2 archive to a file or pipe
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        let mut file_size = None;
-        let mut input_stream = match input {
-            CmprssInput::Path(paths) => {
-                if paths.len() > 1 {
-                    bail!("Multiple input files not supported for bzip2 extraction");
-                }
-                let path = &paths[0];
-                file_size = Some(std::fs::metadata(path)?.len());
-                Box::new(BufReader::new(File::open(path)?)) as Box<dyn Read + Send>
-            }
-            CmprssInput::Pipe(pipe) => Box::new(pipe) as Box<dyn Read + Send>,
-            CmprssInput::Reader(reader) => reader.0,
-        };
+        guard_file_output(&output, "Bzip2")?;
+        let (mut input_stream, file_size) = open_input(input, "Bzip2")?;
+
         if let CmprssOutput::Writer(writer) = output {
             let mut decoder = BzDecoder::new(writer);
             io::copy(&mut input_stream, &mut decoder)?;
         } else {
-            let output_stream: Box<dyn Write + Send> = match &output {
-                CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
-                CmprssOutput::Pipe(pipe) => Box::new(pipe),
-                CmprssOutput::Writer(_) => unreachable!(),
-            };
+            let output_stream = open_output(&output)?;
             let mut decoder = BzDecoder::new(output_stream);
             copy_with_progress(
                 &mut input_stream,

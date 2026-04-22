@@ -1,9 +1,8 @@
+use super::stream::{guard_file_output, open_input, open_output};
 use crate::progress::{ProgressArgs, copy_with_progress};
 use crate::utils::*;
-use anyhow::bail;
 use clap::Args;
-use std::fs::File;
-use std::io::{self, BufReader, BufWriter, Read, Write};
+use std::io;
 use zstd::stream::{read::Decoder, write::Encoder};
 
 /// Zstd-specific compression validator (-7 to 22 range)
@@ -86,46 +85,15 @@ impl Compressor for Zstd {
 
     /// Compress an input file or pipe to a zstd archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        if let CmprssOutput::Path(out_path) = &output
-            && out_path.is_dir()
-        {
-            bail!(
-                "Zstd does not support compressing to a directory. Please specify an output file."
-            );
-        }
-        if let CmprssInput::Path(input_paths) = &input {
-            for x in input_paths {
-                if x.is_dir() {
-                    bail!(
-                        "Zstd does not support compressing a directory. Please specify only files."
-                    );
-                }
-            }
-        }
-        let mut file_size = None;
-        let mut input_stream: Box<dyn Read + Send> = match input {
-            CmprssInput::Path(paths) => {
-                if paths.len() > 1 {
-                    bail!("Multiple input files not supported for zstd");
-                }
-                let path = &paths[0];
-                file_size = Some(std::fs::metadata(path)?.len());
-                Box::new(BufReader::new(File::open(path)?))
-            }
-            CmprssInput::Pipe(stdin) => Box::new(BufReader::new(stdin)),
-            CmprssInput::Reader(reader) => reader.0,
-        };
+        guard_file_output(&output, "Zstd")?;
+        let (mut input_stream, file_size) = open_input(input, "Zstd")?;
 
         if let CmprssOutput::Writer(writer) = output {
             let mut encoder = Encoder::new(writer, self.compression_level)?;
             io::copy(&mut input_stream, &mut encoder)?;
             encoder.finish()?;
         } else {
-            let output_stream: Box<dyn Write + Send> = match &output {
-                CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
-                CmprssOutput::Pipe(stdout) => Box::new(BufWriter::new(stdout)),
-                CmprssOutput::Writer(_) => unreachable!(),
-            };
+            let output_stream = open_output(&output)?;
             let mut encoder = Encoder::new(output_stream, self.compression_level)?;
             copy_with_progress(
                 &mut input_stream,
@@ -143,38 +111,14 @@ impl Compressor for Zstd {
 
     /// Extract a zstd archive to an output file or pipe
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        if let CmprssOutput::Path(out_path) = &output
-            && out_path.is_dir()
-        {
-            bail!(
-                "Zstd does not support extracting to a directory. Please specify an output file."
-            );
-        }
-
-        let mut file_size = None;
-        let input_stream: Box<dyn Read + Send> = match input {
-            CmprssInput::Path(paths) => {
-                if paths.len() > 1 {
-                    bail!("Multiple input files not supported for zstd extraction");
-                }
-                let path = &paths[0];
-                file_size = Some(std::fs::metadata(path)?.len());
-                Box::new(BufReader::new(File::open(path)?))
-            }
-            CmprssInput::Pipe(stdin) => Box::new(BufReader::new(stdin)),
-            CmprssInput::Reader(reader) => reader.0,
-        };
-
+        guard_file_output(&output, "Zstd")?;
+        let (input_stream, file_size) = open_input(input, "Zstd")?;
         let mut decoder = Decoder::new(input_stream)?;
 
         if let CmprssOutput::Writer(mut writer) = output {
             io::copy(&mut decoder, &mut writer)?;
         } else {
-            let mut output_stream: Box<dyn Write + Send> = match &output {
-                CmprssOutput::Path(path) => Box::new(BufWriter::new(File::create(path)?)),
-                CmprssOutput::Pipe(stdout) => Box::new(BufWriter::new(stdout)),
-                CmprssOutput::Writer(_) => unreachable!(),
-            };
+            let mut output_stream = open_output(&output)?;
             copy_with_progress(
                 &mut decoder,
                 &mut output_stream,
