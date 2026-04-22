@@ -62,16 +62,10 @@ enum Format {
 
 fn command(compressor: Option<Box<dyn Compressor>>, args: &CommonArgs) -> Result {
     let job = get_job(compressor, args)?;
-
     match job.action {
-        Action::Compress => job.compressor.compress(job.input, job.output)?,
-        Action::Extract => job.compressor.extract(job.input, job.output)?,
-        _ => {
-            anyhow::bail!("Unknown action requested");
-        }
-    };
-
-    Ok(())
+        Action::Compress => job.compressor.compress(job.input, job.output),
+        Action::Extract => job.compressor.extract(job.input, job.output),
+    }
 }
 
 fn main() {

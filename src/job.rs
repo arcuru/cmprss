@@ -13,15 +13,16 @@ use std::path::{Path, PathBuf};
 use crate::backends::{self, Pipeline};
 use crate::utils::{CmprssInput, CmprssOutput, CommonArgs, Compressor, Result};
 
-/// Extract an action hint from the CLI flags. Returns `Action::Unknown` when
-/// the user hasn't specified `--compress`/`--extract`/`--decompress`.
-fn action_from_flags(args: &CommonArgs) -> Action {
+/// Extract an action hint from the CLI flags. Returns `None` when the user
+/// hasn't specified `--compress`/`--extract`/`--decompress`, in which case
+/// the action will be inferred from filenames downstream.
+fn action_from_flags(args: &CommonArgs) -> Option<Action> {
     if args.compress {
-        Action::Compress
+        Some(Action::Compress)
     } else if args.extract || args.decompress {
-        Action::Extract
+        Some(Action::Extract)
     } else {
-        Action::Unknown
+        None
     }
 }
 
@@ -37,7 +38,7 @@ fn action_from_flags(args: &CommonArgs) -> Action {
 ///   directory is treated as another input to archive.
 fn partition_paths(
     args: &CommonArgs,
-    action_hint: Action,
+    action_hint: Option<Action>,
 ) -> Result<(Vec<PathBuf>, Option<PathBuf>)> {
     let mut inputs = Vec::new();
     if let Some(in_file) = &args.input {
@@ -64,7 +65,7 @@ fn partition_paths(
         if !path.try_exists()? {
             output = Some(path);
             io_list.pop();
-        } else if path.is_dir() && action_hint == Action::Extract {
+        } else if path.is_dir() && action_hint == Some(Action::Extract) {
             // Only treat an existing directory as the output when the user
             // hinted extraction. In Compress/Unknown, we keep it as another
             // input — this matches e.g. `cmprss tar dir1/ dir2/`.
@@ -112,7 +113,6 @@ pub struct Job {
 pub enum Action {
     Compress,
     Extract,
-    Unknown,
 }
 
 /// Parse the common args and determine the details of the job requested.
@@ -160,7 +160,6 @@ pub fn get_job(compressor: Option<Box<dyn Compressor>>, common_args: &CommonArgs
     let default_name = match action {
         Action::Compress => compressor.default_compressed_filename(get_input_filename(&input)?),
         Action::Extract => compressor.default_extracted_filename(get_input_filename(&input)?),
-        Action::Unknown => bail!("Could not determine action to take"),
     };
     Ok(Job {
         compressor,
@@ -174,17 +173,15 @@ pub fn get_job(compressor: Option<Box<dyn Compressor>>, common_args: &CommonArgs
 /// (either `CmprssOutput::Path` or `CmprssOutput::Pipe`).
 fn finalize_with_output(
     mut compressor: Option<Box<dyn Compressor>>,
-    mut action: Action,
+    mut action: Option<Action>,
     input: &CmprssInput,
     output: &CmprssOutput,
 ) -> Result<(Box<dyn Compressor>, Action)> {
-    if compressor.is_none() || action == Action::Unknown {
+    if compressor.is_none() || action.is_none() {
         fill_missing_from_io(&mut compressor, &mut action, input, output)?;
     }
     let compressor = compressor.ok_or_else(|| anyhow!("Could not determine compressor to use"))?;
-    if action == Action::Unknown {
-        bail!("Could not determine action to take");
-    }
+    let action = action.ok_or_else(|| anyhow!("Could not determine action to take"))?;
     Ok((compressor, action))
 }
 
@@ -193,22 +190,22 @@ fn finalize_with_output(
 /// the input side.
 fn finalize_without_output(
     compressor: Option<Box<dyn Compressor>>,
-    action: Action,
+    action: Option<Action>,
     input: &CmprssInput,
 ) -> Result<(Box<dyn Compressor>, Action)> {
     let input_path = get_input_filename(input)?;
     match action {
-        Action::Compress => {
+        Some(Action::Compress) => {
             let c = compressor.ok_or_else(|| anyhow!("Must specify a compressor"))?;
             Ok((c, Action::Compress))
         }
-        Action::Extract => {
+        Some(Action::Extract) => {
             let c = compressor
                 .or_else(|| get_compressor_from_filename(input_path))
                 .ok_or_else(|| anyhow!("Must specify a compressor"))?;
             Ok((c, Action::Extract))
         }
-        Action::Unknown => match compressor {
+        None => match compressor {
             Some(c) => {
                 // Compare the compressor's extension against the input's.
                 let action = match get_compressor_from_filename(input_path) {
@@ -232,17 +229,17 @@ fn finalize_without_output(
 /// of (Path, Pipe) input × (Path, Pipe) output.
 fn fill_missing_from_io(
     compressor: &mut Option<Box<dyn Compressor>>,
-    action: &mut Action,
+    action: &mut Option<Action>,
     input: &CmprssInput,
     output: &CmprssOutput,
 ) -> Result {
     match *action {
-        Action::Compress => {
+        Some(Action::Compress) => {
             if let CmprssOutput::Path(path) = output {
                 *compressor = get_compressor_from_filename(path);
             }
         }
-        Action::Extract => {
+        Some(Action::Extract) => {
             if let CmprssInput::Path(paths) = input {
                 if paths.len() != 1 {
                     bail!("Expected a single archive to extract");
@@ -250,11 +247,11 @@ fn fill_missing_from_io(
                 *compressor = get_compressor_from_filename(paths.first().unwrap());
             }
         }
-        Action::Unknown => match (input, output) {
+        None => match (input, output) {
             (CmprssInput::Path(paths), CmprssOutput::Path(path)) => {
                 if path.is_dir() && paths.len() == 1 {
                     *compressor = get_compressor_from_filename(paths.first().unwrap());
-                    *action = Action::Extract;
+                    *action = Some(Action::Extract);
                     if compressor.is_none() {
                         bail!(
                             "Couldn't determine how to extract {:?}",
@@ -262,24 +259,24 @@ fn fill_missing_from_io(
                         );
                     }
                 } else {
-                    let (c, a) = guess_from_filenames(paths, path, compressor.take());
-                    *compressor = c;
-                    *action = a;
+                    let (c, a) = guess_from_filenames(paths, path, compressor.take())?;
+                    *compressor = Some(c);
+                    *action = Some(a);
                 }
             }
             (CmprssInput::Path(paths), CmprssOutput::Pipe(_)) => {
                 if let Some(c) = compressor.as_deref() {
-                    *action = match get_compressor_from_filename(paths.first().unwrap()) {
+                    *action = Some(match get_compressor_from_filename(paths.first().unwrap()) {
                         Some(ic) if ic.name() == c.name() => Action::Extract,
                         _ => Action::Compress,
-                    };
+                    });
                 } else {
                     if paths.len() != 1 {
                         bail!("Expected a single input file for piping to stdout");
                     }
                     *compressor = get_compressor_from_filename(paths.first().unwrap());
                     if compressor.is_some() {
-                        *action = Action::Extract;
+                        *action = Some(Action::Extract);
                     } else {
                         bail!("Can't guess compressor to use");
                     }
@@ -287,29 +284,31 @@ fn fill_missing_from_io(
             }
             (CmprssInput::Pipe(_), CmprssOutput::Path(path)) => {
                 if let Some(c) = compressor.as_deref() {
-                    *action = if get_compressor_from_filename(path)
-                        .is_some_and(|pc| c.name() == pc.name())
-                    {
-                        Action::Compress
-                    } else {
-                        Action::Extract
-                    };
+                    *action = Some(
+                        if get_compressor_from_filename(path)
+                            .is_some_and(|pc| c.name() == pc.name())
+                        {
+                            Action::Compress
+                        } else {
+                            Action::Extract
+                        },
+                    );
                 } else {
                     *compressor = get_compressor_from_filename(path);
                     if compressor.is_some() {
-                        *action = Action::Compress;
+                        *action = Some(Action::Compress);
                     } else {
                         bail!("Can't guess compressor to use");
                     }
                 }
             }
             (CmprssInput::Pipe(_), CmprssOutput::Pipe(_)) => {
-                *action = Action::Compress;
+                *action = Some(Action::Compress);
             }
             // Writer output and Reader input are only constructed internally
             // by the Pipeline compressor; they don't reach get_job from main.
-            (_, CmprssOutput::Writer(_)) => *action = Action::Compress,
-            (CmprssInput::Reader(_), _) => *action = Action::Extract,
+            (_, CmprssOutput::Writer(_)) => *action = Some(Action::Compress),
+            (CmprssInput::Reader(_), _) => *action = Some(Action::Extract),
         },
     }
     Ok(())
@@ -390,92 +389,90 @@ fn get_path(input: &str) -> Option<PathBuf> {
     Some(path)
 }
 
-/// Guess compressor/action from the two filenames
-/// The compressor may already be given
+/// Guess compressor/action from the two filenames. The compressor may already
+/// be given via the subcommand.
+///
+/// Returns an error when the two filenames don't give enough information to
+/// pick an action (e.g. the same format on both sides and the output isn't a
+/// directory).
 fn guess_from_filenames(
     input: &[PathBuf],
     output: &Path,
     compressor: Option<Box<dyn Compressor>>,
-) -> (Option<Box<dyn Compressor>>, Action) {
+) -> Result<(Box<dyn Compressor>, Action)> {
     if input.len() != 1 {
-        if let Some(guessed_compressor) = get_compressor_from_filename(output) {
-            return (Some(guessed_compressor), Action::Compress);
+        if let Some(c) = get_compressor_from_filename(output) {
+            return Ok((c, Action::Compress));
         }
-
-        // Check if output is a directory - this is likely an extraction
-        if output.is_dir() {
-            // Try to determine compressor from the input file's extension(s)
-            if let Some(input_path) = input.first()
-                && let Some(guessed_compressor) = get_compressor_from_filename(input_path)
-            {
-                return (Some(guessed_compressor), Action::Extract);
-            }
+        if output.is_dir()
+            && let Some(first) = input.first()
+            && let Some(c) = get_compressor_from_filename(first)
+        {
+            return Ok((c, Action::Extract));
         }
-
-        // In theory we could be extracting multiple files to a directory
-        // We'll fail somewhere else if that's not the case
-        return (compressor, Action::Extract);
+        // No extension hint anywhere, but we were given a compressor —
+        // assume the user wants to extract multiple archives to a directory.
+        let c = compressor.ok_or_else(|| anyhow!("Could not determine compressor to use"))?;
+        return Ok((c, Action::Extract));
     }
     let input = input.first().unwrap();
 
-    let guessed_compressor = get_compressor_from_filename(output);
-    let guessed_extractor = get_compressor_from_filename(input);
-    let guessed_compressor_name = if let Some(c) = &guessed_compressor {
-        c.name()
-    } else {
-        ""
-    };
-    let guessed_extractor_name = if let Some(e) = &guessed_extractor {
-        e.name()
-    } else {
-        ""
-    };
+    let output_guess = get_compressor_from_filename(output);
+    let input_guess = get_compressor_from_filename(input);
 
-    if let Some(c) = &compressor {
-        if guessed_compressor_name == c.name() {
-            return (compressor, Action::Compress);
-        } else if guessed_extractor_name == c.name() {
-            return (compressor, Action::Extract);
+    // If the user supplied a compressor via subcommand, pick the action by
+    // matching its name against the input/output extensions.
+    if let Some(c) = compressor {
+        let action = if output_guess
+            .as_ref()
+            .is_some_and(|og| og.name() == c.name())
+        {
+            Action::Compress
+        } else if input_guess.as_ref().is_some_and(|ig| ig.name() == c.name()) {
+            Action::Extract
         } else {
-            // Default to compressing
-            return (compressor, Action::Compress);
-        }
+            // Extensions don't match on either side; default to compressing.
+            Action::Compress
+        };
+        return Ok((c, action));
     }
 
-    match (guessed_compressor, guessed_extractor) {
-        (None, None) => (None, Action::Unknown),
-        (Some(c), None) => (Some(c), Action::Compress),
-        (None, Some(e)) => (Some(e), Action::Extract),
+    match (output_guess, input_guess) {
+        (None, None) => bail!("Could not determine compressor to use"),
+        (Some(c), None) => Ok((c, Action::Compress)),
+        (None, Some(e)) => Ok((e, Action::Extract)),
         (Some(c), Some(e)) => {
-            // Compare the input and output extensions to see if one has an extra extension
+            // Both sides carry a known extension — decide whether this is
+            // adding or stripping a single outer layer (e.g. tar → tar.gz).
             let input_file = input.file_name().unwrap().to_str().unwrap();
             let input_ext = input.extension().unwrap_or_default();
             let output_file = output.file_name().unwrap().to_str().unwrap();
             let output_ext = output.extension().unwrap_or_default();
-            let guessed_output = input_file.to_string() + "." + output_ext.to_str().unwrap();
-            let guessed_input = output_file.to_string() + "." + input_ext.to_str().unwrap();
+            let layer_added = input_file.to_string() + "." + output_ext.to_str().unwrap();
+            let layer_stripped = output_file.to_string() + "." + input_ext.to_str().unwrap();
 
-            if guessed_output == output_file {
-                // Input is "archive.tar", output is "archive.tar.gz" — only add the outer layer
-                let single_compressor =
-                    backends::compressor_from_str(output_ext.to_str().unwrap_or(""));
-                (single_compressor.or(Some(c)), Action::Compress)
-            } else if guessed_input == input_file {
-                // Output is "archive.tar", input is "archive.tar.gz" — only strip the outer layer
-                let single_compressor =
-                    backends::compressor_from_str(input_ext.to_str().unwrap_or(""));
-                (single_compressor.or(Some(e)), Action::Extract)
+            if layer_added == output_file {
+                // input="archive.tar", output="archive.tar.gz" — add the outer layer only.
+                let single =
+                    backends::compressor_from_str(output_ext.to_str().unwrap_or("")).unwrap_or(c);
+                Ok((single, Action::Compress))
+            } else if layer_stripped == input_file {
+                // input="archive.tar.gz", output="archive.tar" — strip the outer layer only.
+                let single =
+                    backends::compressor_from_str(input_ext.to_str().unwrap_or("")).unwrap_or(e);
+                Ok((single, Action::Extract))
             } else if c.name() == e.name() {
-                // Same format for input and output, can't decide
+                // Same format on both sides: only meaningful when the output
+                // is a directory (extracting in place).
                 if output.is_dir() {
-                    (Some(e), Action::Extract)
+                    Ok((e, Action::Extract))
                 } else {
-                    (Some(c), Action::Unknown)
+                    bail!("Could not determine action to take");
                 }
             } else if output.is_dir() {
-                (Some(e), Action::Extract)
+                Ok((e, Action::Extract))
             } else {
-                (None, Action::Unknown)
+                bail!("Could not determine action to take");
             }
         }
     }
