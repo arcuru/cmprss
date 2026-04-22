@@ -15,9 +15,12 @@ All compression libraries are statically compiled in, so no runtime dependencies
 
 Currently supports:
 
+- brotli
 - bzip2
 - gzip
 - lz4
+- lzma (legacy LZMA1)
+- snappy (framed)
 - tar
 - xz
 - zip
