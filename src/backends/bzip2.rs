@@ -87,7 +87,7 @@ impl Compressor for Bzip2 {
 
     /// Bzip2 extracts to a file by default
     fn default_extracted_target(&self) -> ExtractedTarget {
-        ExtractedTarget::FILE
+        ExtractedTarget::File
     }
 
     /// Compress an input file or pipe to a bz2 archive

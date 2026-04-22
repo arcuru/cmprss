@@ -178,7 +178,7 @@ impl Compressor for Pipeline {
     }
 
     fn default_extracted_filename(&self, in_path: &Path) -> String {
-        if self.default_extracted_target() == ExtractedTarget::DIRECTORY {
+        if self.default_extracted_target() == ExtractedTarget::Directory {
             return ".".to_string();
         }
         // Strip all known extensions: input.tar.gz → input
@@ -299,7 +299,7 @@ impl Compressor for Pipeline {
 
         let final_output = match output {
             CmprssOutput::Path(ref p) => {
-                if last_extractor.default_extracted_target() == ExtractedTarget::DIRECTORY
+                if last_extractor.default_extracted_target() == ExtractedTarget::Directory
                     && !p.exists()
                 {
                     std::fs::create_dir_all(p)?;

@@ -12,9 +12,9 @@ pub type Result<T = ()> = anyhow::Result<T>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExtractedTarget {
     /// Extract to a single file (e.g., gzip, bzip2, xz)
-    FILE,
+    File,
     /// Extract to a directory (e.g., zip, tar)
-    DIRECTORY,
+    Directory,
 }
 
 #[derive(Args, Debug)]
@@ -170,7 +170,7 @@ pub trait Compressor: Send + Sync {
     /// FILE compressors (like gzip, bzip2, xz) extract to a single file
     /// DIRECTORY compressors (like zip, tar) extract to a directory
     fn default_extracted_target(&self) -> ExtractedTarget {
-        ExtractedTarget::FILE
+        ExtractedTarget::File
     }
 
     /// Detect if the input is an archive of this type
@@ -198,7 +198,7 @@ pub trait Compressor: Send + Sync {
 
     /// Generate the default extracted filename
     fn default_extracted_filename(&self, in_path: &Path) -> String {
-        if self.default_extracted_target() == ExtractedTarget::DIRECTORY {
+        if self.default_extracted_target() == ExtractedTarget::Directory {
             return ".".to_string();
         }
 

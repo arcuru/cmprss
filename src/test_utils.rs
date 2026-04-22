@@ -41,10 +41,10 @@ pub fn test_compressor_interface<T: Compressor>(
     let formatted_name = format!("test.{}", ext);
     let archive_path = Path::new(&formatted_name);
     match compressor.default_extracted_target() {
-        ExtractedTarget::FILE => {
+        ExtractedTarget::File => {
             assert_eq!(compressor.default_extracted_filename(archive_path), "test");
         }
-        ExtractedTarget::DIRECTORY => {
+        ExtractedTarget::Directory => {
             assert_eq!(compressor.default_extracted_filename(archive_path), ".");
         }
     }
@@ -52,13 +52,13 @@ pub fn test_compressor_interface<T: Compressor>(
     // Test default_extracted_filename with non-matching extension
     let non_archive_path = Path::new("test.txt");
     match compressor.default_extracted_target() {
-        ExtractedTarget::FILE => {
+        ExtractedTarget::File => {
             assert_eq!(
                 compressor.default_extracted_filename(non_archive_path),
                 "archive"
             );
         }
-        ExtractedTarget::DIRECTORY => {
+        ExtractedTarget::Directory => {
             assert_eq!(compressor.default_extracted_filename(non_archive_path), ".");
         }
     }
@@ -83,8 +83,8 @@ pub fn test_compressor_roundtrip<T: Compressor>(compressor: &T, test_data: &str)
 
     // Extract
     let output_path = match compressor.default_extracted_target() {
-        ExtractedTarget::FILE => temp_dir.path().join("output.txt"),
-        ExtractedTarget::DIRECTORY => temp_dir.path().join("output"),
+        ExtractedTarget::File => temp_dir.path().join("output.txt"),
+        ExtractedTarget::Directory => temp_dir.path().join("output"),
     };
     compressor.extract(
         CmprssInput::Path(vec![archive_path]),
@@ -94,8 +94,8 @@ pub fn test_compressor_roundtrip<T: Compressor>(compressor: &T, test_data: &str)
     // Verify
     let input_filename = "input.txt";
     let output_data = match compressor.default_extracted_target() {
-        ExtractedTarget::FILE => fs::read_to_string(output_path)?,
-        ExtractedTarget::DIRECTORY => fs::read_to_string(output_path.join(input_filename))?,
+        ExtractedTarget::File => fs::read_to_string(output_path)?,
+        ExtractedTarget::Directory => fs::read_to_string(output_path.join(input_filename))?,
     };
     assert_eq!(output_data, test_data);
 

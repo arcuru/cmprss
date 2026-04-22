@@ -66,7 +66,7 @@ impl Compressor for Zip {
 
     /// Zip extracts to a directory by default
     fn default_extracted_target(&self) -> ExtractedTarget {
-        ExtractedTarget::DIRECTORY
+        ExtractedTarget::Directory
     }
 
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {

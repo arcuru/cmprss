@@ -61,7 +61,7 @@ impl Compressor for Gzip {
 
     /// Gzip extracts to a file by default
     fn default_extracted_target(&self) -> ExtractedTarget {
-        ExtractedTarget::FILE
+        ExtractedTarget::File
     }
 
     /// Compress an input file or pipe to a gzip archive

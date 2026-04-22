@@ -604,7 +604,7 @@ mod tests {
             let c = get_compressor_from_filename(Path::new(path)).unwrap();
             assert_eq!(
                 c.default_extracted_target(),
-                ExtractedTarget::DIRECTORY,
+                ExtractedTarget::Directory,
                 "{path} should extract to a directory",
             );
         }
@@ -662,17 +662,17 @@ mod tests {
     #[test]
     fn test_extracted_target_single_pipeline() {
         let gz = get_compressor_from_filename(Path::new("file.gz")).unwrap();
-        assert_eq!(gz.default_extracted_target(), ExtractedTarget::FILE);
+        assert_eq!(gz.default_extracted_target(), ExtractedTarget::File);
 
         let tar = get_compressor_from_filename(Path::new("file.tar")).unwrap();
-        assert_eq!(tar.default_extracted_target(), ExtractedTarget::DIRECTORY);
+        assert_eq!(tar.default_extracted_target(), ExtractedTarget::Directory);
     }
 
     #[test]
     fn test_extracted_target_multi_pipeline() {
         // tar.gz: innermost is tar, which extracts to directory
         let c = get_compressor_from_filename(Path::new("archive.tar.gz")).unwrap();
-        assert_eq!(c.default_extracted_target(), ExtractedTarget::DIRECTORY);
+        assert_eq!(c.default_extracted_target(), ExtractedTarget::Directory);
     }
 
     #[test]
