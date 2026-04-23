@@ -25,7 +25,7 @@ pub fn open_input(input: CmprssInput, name: &str) -> Result<(Box<dyn Read + Send
             }
             let path = &paths[0];
             if path.is_dir() {
-                bail!("{name} does not operate on directories; specify a file instead.");
+                bail!("{name} does not operate on directories; specify a file instead");
             }
             let size = std::fs::metadata(path)?.len();
             let reader: Box<dyn Read + Send> = Box::new(BufReader::new(File::open(path)?));
@@ -43,7 +43,7 @@ pub fn guard_file_output(output: &CmprssOutput, name: &str) -> Result {
     if let CmprssOutput::Path(path) = output
         && path.is_dir()
     {
-        bail!("{name} does not operate on directories; specify an output file instead.");
+        bail!("{name} does not operate on directories; specify an output file instead");
     }
     Ok(())
 }

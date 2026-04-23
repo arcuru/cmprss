@@ -97,7 +97,7 @@ fn resolve_input(inputs: Vec<PathBuf>, args: &CommonArgs) -> Result<CmprssInput>
     if !std::io::stdin().is_terminal() && !args.ignore_pipes && !args.ignore_stdin {
         return Ok(CmprssInput::Pipe(std::io::stdin()));
     }
-    bail!("No specified input");
+    bail!("No input specified");
 }
 
 /// Whether we can send the output to stdout (piped, and the user hasn't
@@ -225,13 +225,13 @@ fn finalize_without_output(
     let input_path = get_input_filename(input)?;
     match action {
         Some(Action::Compress) => {
-            let c = compressor.ok_or_else(|| anyhow!("Must specify a compressor"))?;
+            let c = compressor.ok_or_else(|| anyhow!("Could not determine compressor to use"))?;
             Ok((c, Action::Compress))
         }
         Some(Action::Extract) => {
             let c = compressor
                 .or_else(|| get_compressor_from_filename(input_path))
-                .ok_or_else(|| anyhow!("Must specify a compressor"))?;
+                .ok_or_else(|| anyhow!("Could not determine compressor to use"))?;
             Ok((c, Action::Extract))
         }
         // List is handled by the short-circuit at the top of get_job and
@@ -249,7 +249,7 @@ fn finalize_without_output(
             None => {
                 // The input has to be something we can identify as an archive.
                 let c = get_compressor_from_filename(input_path)
-                    .ok_or_else(|| anyhow!("Must specify a compressor"))?;
+                    .ok_or_else(|| anyhow!("Could not determine compressor to use"))?;
                 Ok((c, Action::Extract))
             }
         },
@@ -276,7 +276,7 @@ fn fill_missing_from_io(
         Some(Action::Extract) => {
             if let CmprssInput::Path(paths) = input {
                 if paths.len() != 1 {
-                    bail!("Expected a single archive to extract");
+                    bail!("Expected exactly one input archive");
                 }
                 *compressor = get_compressor_from_filename(paths.first().unwrap());
             }
@@ -288,7 +288,7 @@ fn fill_missing_from_io(
                     *action = Some(Action::Extract);
                     if compressor.is_none() {
                         bail!(
-                            "Couldn't determine how to extract {:?}",
+                            "Could not determine compressor for {:?}",
                             paths.first().unwrap()
                         );
                     }
@@ -306,13 +306,13 @@ fn fill_missing_from_io(
                     });
                 } else {
                     if paths.len() != 1 {
-                        bail!("Expected a single input file for piping to stdout");
+                        bail!("Expected exactly one input file when writing to stdout");
                     }
                     *compressor = get_compressor_from_filename(paths.first().unwrap());
                     if compressor.is_some() {
                         *action = Some(Action::Extract);
                     } else {
-                        bail!("Can't guess compressor to use");
+                        bail!("Could not determine compressor to use");
                     }
                 }
             }
@@ -332,7 +332,7 @@ fn fill_missing_from_io(
                     if compressor.is_some() {
                         *action = Some(Action::Compress);
                     } else {
-                        bail!("Can't guess compressor to use");
+                        bail!("Could not determine compressor to use");
                     }
                 }
             }
@@ -354,7 +354,7 @@ fn get_input_filename(input: &CmprssInput) -> Result<&Path> {
     match input {
         CmprssInput::Path(paths) => match paths.first() {
             Some(path) => Ok(path),
-            None => bail!("error: no input specified"),
+            None => bail!("No input specified"),
         },
         CmprssInput::Pipe(_) => Ok(Path::new("archive")),
         CmprssInput::Reader(_) => Ok(Path::new("piped_data")),

@@ -42,7 +42,7 @@ impl Zip {
                         let base = path.parent().unwrap_or(&path);
                         add_directory(&mut zip_writer, base, &path)?;
                     } else {
-                        bail!("unsupported file type for zip compression");
+                        bail!("zip does not support this file type");
                     }
                 }
             }
@@ -52,7 +52,7 @@ impl Zip {
                 io::copy(&mut pipe, &mut zip_writer)?;
             }
             CmprssInput::Reader(_) => {
-                bail!("Cannot zip a reader input");
+                bail!("zip does not accept an in-memory reader input");
             }
         }
 
@@ -112,7 +112,7 @@ impl Compressor for Zip {
                 match input {
                     CmprssInput::Path(paths) => {
                         if paths.len() != 1 {
-                            bail!("zip extraction expects a single archive file");
+                            bail!("zip extraction expects exactly one archive file");
                         }
                         let file = File::open(&paths[0])?;
                         let mut archive = ZipArchive::new(file)?;
@@ -134,7 +134,7 @@ impl Compressor for Zip {
                     }
                     CmprssInput::Reader(_) => {
                         bail!(
-                            "Cannot extract from a reader input for zip (requires seekable input)"
+                            "zip extraction does not accept an in-memory reader input (requires seekable input)"
                         )
                     }
                 }
@@ -143,7 +143,7 @@ impl Compressor for Zip {
             CmprssOutput::Writer(mut writer) => match input {
                 CmprssInput::Path(paths) => {
                     if paths.len() != 1 {
-                        bail!("zip extraction expects a single archive file");
+                        bail!("zip extraction expects exactly one archive file");
                     }
                     let mut file = File::open(&paths[0])?;
                     io::copy(&mut file, &mut writer)?;
@@ -169,7 +169,7 @@ impl Compressor for Zip {
         match input {
             CmprssInput::Path(paths) => {
                 if paths.len() != 1 {
-                    bail!("zip listing expects a single archive file");
+                    bail!("zip listing expects exactly one archive file");
                 }
                 let archive = ZipArchive::new(File::open(&paths[0])?)?;
                 for name in archive.file_names() {

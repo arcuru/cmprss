@@ -78,7 +78,7 @@ impl Compressor for Tar {
                 match input {
                     CmprssInput::Path(paths) => {
                         if paths.len() != 1 {
-                            bail!("tar extraction expects a single archive file");
+                            bail!("tar extraction expects exactly one archive file");
                         }
                         let file = File::open(&paths[0])?;
                         let mut archive = Archive::new(file);
@@ -109,7 +109,7 @@ impl Compressor for Tar {
             CmprssOutput::Writer(mut writer) => match input {
                 CmprssInput::Path(paths) => {
                     if paths.len() != 1 {
-                        bail!("tar extraction expects a single archive file");
+                        bail!("tar extraction expects exactly one archive file");
                     }
                     let mut file = File::open(&paths[0])?;
                     io::copy(&mut file, &mut writer)?;
@@ -131,7 +131,7 @@ impl Compressor for Tar {
         let reader: Box<dyn Read> = match input {
             CmprssInput::Path(paths) => {
                 if paths.len() != 1 {
-                    bail!("tar listing expects a single archive file");
+                    bail!("tar listing expects exactly one archive file");
                 }
                 Box::new(File::open(&paths[0])?)
             }
@@ -164,7 +164,7 @@ impl Tar {
                     } else if path.is_dir() {
                         archive.append_dir_all(path.file_name().unwrap(), path.as_path())?;
                     } else {
-                        bail!("unsupported file type for tar compression");
+                        bail!("tar does not support this file type");
                     }
                 }
             }
@@ -176,7 +176,7 @@ impl Tar {
                 archive.append_file("archive", &mut temp_file)?;
             }
             CmprssInput::Reader(_) => {
-                bail!("Cannot tar a reader input directly");
+                bail!("tar does not accept an in-memory reader input");
             }
         }
         Ok(archive.finish()?)
