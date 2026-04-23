@@ -7,9 +7,7 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use tar::{Archive, Builder};
 use tempfile::tempfile;
 
-use crate::utils::{
-    CmprssInput, CmprssOutput, CommonArgs, Compressor, ExtractedTarget, Result,
-};
+use crate::utils::{CmprssInput, CmprssOutput, CommonArgs, Compressor, ExtractedTarget, Result};
 
 #[derive(Args, Debug)]
 pub struct TarArgs {
