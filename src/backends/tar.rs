@@ -2,25 +2,36 @@ extern crate tar;
 
 use anyhow::bail;
 use clap::Args;
+use indicatif::ProgressBar;
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom, Write};
-use tar::{Archive, Builder};
+use std::path::Path;
+use tar::{Archive, Builder, EntryType, Header};
 use tempfile::tempfile;
 
+use super::containers::total_input_bytes;
+use crate::progress::{OutputTarget, ProgressArgs, ProgressReader, create_progress_bar};
 use crate::utils::{CmprssInput, CmprssOutput, CommonArgs, Compressor, ExtractedTarget, Result};
 
 #[derive(Args, Debug)]
 pub struct TarArgs {
     #[clap(flatten)]
     pub common_args: CommonArgs,
+
+    #[clap(flatten)]
+    pub progress_args: ProgressArgs,
 }
 
 #[derive(Default, Clone)]
-pub struct Tar {}
+pub struct Tar {
+    pub progress_args: ProgressArgs,
+}
 
 impl Tar {
-    pub fn new(_args: &TarArgs) -> Tar {
-        Tar {}
+    pub fn new(args: &TarArgs) -> Tar {
+        Tar {
+            progress_args: args.progress_args,
+        }
     }
 }
 
@@ -42,13 +53,23 @@ impl Compressor for Tar {
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         match output {
             CmprssOutput::Path(path) => {
+                let total = match &input {
+                    CmprssInput::Path(paths) => Some(total_input_bytes(paths)),
+                    _ => None,
+                };
+                let bar =
+                    create_progress_bar(total, self.progress_args.progress, OutputTarget::File);
                 let file = File::create(path)?;
-                self.compress_internal(input, Builder::new(file))
+                self.compress_internal(input, Builder::new(file), bar.as_ref())?;
+                if let Some(b) = bar {
+                    b.finish();
+                }
+                Ok(())
             }
             CmprssOutput::Pipe(mut pipe) => {
                 // Create a temporary file to write the tar to
                 let mut temp_file = tempfile()?;
-                self.compress_internal(input, Builder::new(&mut temp_file))?;
+                self.compress_internal(input, Builder::new(&mut temp_file), None)?;
 
                 // Reset the file position to the beginning
                 temp_file.seek(SeekFrom::Start(0))?;
@@ -59,7 +80,7 @@ impl Compressor for Tar {
             }
             CmprssOutput::Writer(mut writer) => {
                 let mut temp_file = tempfile()?;
-                self.compress_internal(input, Builder::new(&mut temp_file))?;
+                self.compress_internal(input, Builder::new(&mut temp_file), None)?;
                 temp_file.seek(SeekFrom::Start(0))?;
                 io::copy(&mut temp_file, &mut writer)?;
                 Ok(())
@@ -83,8 +104,8 @@ impl Compressor for Tar {
                             bail!("tar extraction expects exactly one archive file");
                         }
                         let file = File::open(&paths[0])?;
-                        let mut archive = Archive::new(file);
-                        Ok(archive.unpack(out_dir)?)
+                        let size = file.metadata()?.len();
+                        self.unpack_with_progress(file, Some(size), out_dir)
                     }
                     CmprssInput::Pipe(mut pipe) => {
                         // Create a temporary file to store the tar content
@@ -95,10 +116,8 @@ impl Compressor for Tar {
 
                         // Reset the file position to the beginning
                         temp_file.seek(SeekFrom::Start(0))?;
-
-                        // Extract from the temporary file
-                        let mut archive = Archive::new(temp_file);
-                        Ok(archive.unpack(out_dir)?)
+                        let size = temp_file.metadata()?.len();
+                        self.unpack_with_progress(temp_file, Some(size), out_dir)
                     }
                     CmprssInput::Reader(reader) => {
                         let mut archive = Archive::new(reader.0);
@@ -153,18 +172,24 @@ impl Compressor for Tar {
 }
 
 impl Tar {
-    /// Internal compress helper
-    fn compress_internal<W: Write>(&self, input: CmprssInput, mut archive: Builder<W>) -> Result {
+    /// Internal compress helper. When `bar` is `Some`, recursively walks
+    /// path inputs ourselves (rather than using `Builder::append_dir_all`)
+    /// so every file read runs through `ProgressReader`, sharing a single
+    /// bar across all entries.
+    fn compress_internal<W: Write>(
+        &self,
+        input: CmprssInput,
+        mut archive: Builder<W>,
+        bar: Option<&ProgressBar>,
+    ) -> Result {
         match input {
             CmprssInput::Path(paths) => {
                 for path in paths {
+                    let name = path.file_name().unwrap();
                     if path.is_file() {
-                        archive.append_file(
-                            path.file_name().unwrap(),
-                            &mut File::open(path.as_path())?,
-                        )?;
+                        append_file_entry(&mut archive, Path::new(name), &path, bar)?;
                     } else if path.is_dir() {
-                        archive.append_dir_all(path.file_name().unwrap(), path.as_path())?;
+                        append_dir_entry(&mut archive, Path::new(name), &path, bar)?;
                     } else {
                         bail!("tar does not support this file type");
                     }
@@ -183,6 +208,67 @@ impl Tar {
         }
         Ok(archive.finish()?)
     }
+
+    fn unpack_with_progress<R: Read>(
+        &self,
+        reader: R,
+        size: Option<u64>,
+        out_dir: &Path,
+    ) -> Result {
+        let bar = create_progress_bar(size, self.progress_args.progress, OutputTarget::File);
+        let reader = ProgressReader::new(reader, bar.clone());
+        let mut archive = Archive::new(reader);
+        archive.unpack(out_dir)?;
+        if let Some(b) = bar {
+            b.finish();
+        }
+        Ok(())
+    }
+}
+
+/// Append one regular file to the tar archive, wrapping reads in a
+/// `ProgressReader` that ticks the shared bar.
+fn append_file_entry<W: Write>(
+    archive: &mut Builder<W>,
+    archive_name: &Path,
+    disk_path: &Path,
+    bar: Option<&ProgressBar>,
+) -> Result {
+    let mut file = File::open(disk_path)?;
+    let meta = file.metadata()?;
+    let mut header = Header::new_gnu();
+    header.set_metadata(&meta);
+    header.set_size(meta.len());
+    let reader = ProgressReader::new(&mut file, bar.cloned());
+    archive.append_data(&mut header, archive_name, reader)?;
+    Ok(())
+}
+
+/// Write the directory header, then recurse into its children.
+fn append_dir_entry<W: Write>(
+    archive: &mut Builder<W>,
+    archive_name: &Path,
+    disk_path: &Path,
+    bar: Option<&ProgressBar>,
+) -> Result {
+    let meta = std::fs::metadata(disk_path)?;
+    let mut header = Header::new_gnu();
+    header.set_metadata(&meta);
+    header.set_entry_type(EntryType::Directory);
+    header.set_size(0);
+    archive.append_data(&mut header, archive_name, io::empty())?;
+    for entry in std::fs::read_dir(disk_path)? {
+        let entry = entry?;
+        let child_archive = archive_name.join(entry.file_name());
+        let child_disk = entry.path();
+        if child_disk.is_file() {
+            append_file_entry(archive, &child_archive, &child_disk, bar)?;
+        } else if child_disk.is_dir() {
+            append_dir_entry(archive, &child_archive, &child_disk, bar)?;
+        }
+        // Skip symlinks/other types; they weren't handled before either.
+    }
+    Ok(())
 }
 
 #[cfg(test)]

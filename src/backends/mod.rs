@@ -1,5 +1,6 @@
 mod brotli;
 mod bzip2;
+mod containers;
 mod gzip;
 mod lz4;
 mod lzma;
