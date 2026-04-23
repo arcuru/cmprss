@@ -1,13 +1,12 @@
-use super::stream::{guard_file_output, open_input, open_output};
+use super::stream::{copy_stream, guard_file_output, open_input, prepare_output};
 use crate::{
-    progress::{ProgressArgs, copy_with_progress},
+    progress::ProgressArgs,
     utils::{
         CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
         DefaultCompressionValidator, LevelArgs, Result,
     },
 };
 use clap::Args;
-use std::io;
 use xz2::read::XzDecoder;
 use xz2::write::XzEncoder;
 
@@ -60,47 +59,26 @@ impl Compressor for Xz {
 
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "Xz")?;
-        let (mut input_stream, file_size) = open_input(input, "Xz")?;
-
-        if let CmprssOutput::Writer(writer) = output {
-            let mut encoder = XzEncoder::new(writer, self.level as u32);
-            io::copy(&mut input_stream, &mut encoder)?;
-            encoder.finish()?;
-        } else {
-            let output_stream = open_output(&output)?;
-            let mut encoder = XzEncoder::new(output_stream, self.level as u32);
-            copy_with_progress(
-                &mut input_stream,
-                &mut encoder,
-                self.progress_args.chunk_size.size_in_bytes,
-                file_size,
-                self.progress_args.progress,
-                &output,
-            )?;
-        }
-
+        let (input_stream, file_size) = open_input(input, "Xz")?;
+        let (writer, target) = prepare_output(output)?;
+        let mut encoder = XzEncoder::new(writer, self.level as u32);
+        copy_stream(
+            input_stream,
+            &mut encoder,
+            file_size,
+            &self.progress_args,
+            target,
+        )?;
+        encoder.finish()?;
         Ok(())
     }
 
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "Xz")?;
         let (input_stream, file_size) = open_input(input, "Xz")?;
-        let mut decoder = XzDecoder::new(input_stream);
-
-        if let CmprssOutput::Writer(mut writer) = output {
-            io::copy(&mut decoder, &mut writer)?;
-        } else {
-            let mut output_stream = open_output(&output)?;
-            copy_with_progress(
-                &mut decoder,
-                &mut output_stream,
-                self.progress_args.chunk_size.size_in_bytes,
-                file_size,
-                self.progress_args.progress,
-                &output,
-            )?;
-        }
-
+        let decoder = XzDecoder::new(input_stream);
+        let (writer, target) = prepare_output(output)?;
+        copy_stream(decoder, writer, file_size, &self.progress_args, target)?;
         Ok(())
     }
 }

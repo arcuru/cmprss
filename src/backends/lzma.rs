@@ -1,6 +1,6 @@
-use super::stream::{guard_file_output, open_input, open_output};
+use super::stream::{copy_stream, guard_file_output, open_input, prepare_output};
 use crate::{
-    progress::{ProgressArgs, copy_with_progress},
+    progress::ProgressArgs,
     utils::{
         CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
         DefaultCompressionValidator, LevelArgs, Result,
@@ -93,48 +93,30 @@ impl Compressor for Lzma {
 
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "LZMA")?;
-        let (mut input_stream, file_size) = open_input(input, "LZMA")?;
-
-        if let CmprssOutput::Writer(writer) = output {
-            let mut encoder = XzEncoder::new_stream(writer, self.encoder_stream()?);
-            io::copy(&mut input_stream, &mut encoder)?;
-            encoder.try_finish()?;
-        } else {
-            let output_stream = open_output(&output)?;
-            let mut encoder = XzEncoder::new_stream(output_stream, self.encoder_stream()?);
-            copy_with_progress(
-                &mut input_stream,
-                NoFlush(&mut encoder),
-                self.progress_args.chunk_size.size_in_bytes,
-                file_size,
-                self.progress_args.progress,
-                &output,
-            )?;
-            encoder.try_finish()?;
-        }
-
+        let (input_stream, file_size) = open_input(input, "LZMA")?;
+        let (writer, target) = prepare_output(output)?;
+        let mut encoder = XzEncoder::new_stream(writer, self.encoder_stream()?);
+        // `copy_stream` flushes the final writer on the path/pipe branch via
+        // `copy_with_progress`; LZMA1 (`lzma_alone`) rejects mid-stream flush,
+        // so wrap the encoder to swallow those calls and let `try_finish`
+        // finalize the stream.
+        copy_stream(
+            input_stream,
+            NoFlush(&mut encoder),
+            file_size,
+            &self.progress_args,
+            target,
+        )?;
+        encoder.try_finish()?;
         Ok(())
     }
 
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "LZMA")?;
         let (input_stream, file_size) = open_input(input, "LZMA")?;
-        let mut decoder = XzDecoder::new_stream(input_stream, Self::decoder_stream()?);
-
-        if let CmprssOutput::Writer(mut writer) = output {
-            io::copy(&mut decoder, &mut writer)?;
-        } else {
-            let mut output_stream = open_output(&output)?;
-            copy_with_progress(
-                &mut decoder,
-                &mut output_stream,
-                self.progress_args.chunk_size.size_in_bytes,
-                file_size,
-                self.progress_args.progress,
-                &output,
-            )?;
-        }
-
+        let decoder = XzDecoder::new_stream(input_stream, Self::decoder_stream()?);
+        let (writer, target) = prepare_output(output)?;
+        copy_stream(decoder, writer, file_size, &self.progress_args, target)?;
         Ok(())
     }
 }

@@ -1,6 +1,6 @@
-use super::stream::{guard_file_output, open_input, open_output};
+use super::stream::{copy_stream, guard_file_output, open_input, prepare_output};
 use crate::{
-    progress::{ProgressArgs, copy_with_progress},
+    progress::ProgressArgs,
     utils::{
         CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor, LevelArgs,
         Result,
@@ -9,7 +9,6 @@ use crate::{
 use bzip2::Compression;
 use bzip2::write::{BzDecoder, BzEncoder};
 use clap::Args;
-use std::io;
 
 /// BZip2-specific compression validator (1-9 range)
 #[derive(Debug, Clone, Copy)]
@@ -85,49 +84,34 @@ impl Compressor for Bzip2 {
     /// Compress an input file or pipe to a bz2 archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "Bzip2")?;
-        let (mut input_stream, file_size) = open_input(input, "Bzip2")?;
-        let level = Compression::new(self.level as u32);
-
-        if let CmprssOutput::Writer(writer) = output {
-            let mut encoder = BzEncoder::new(writer, level);
-            io::copy(&mut input_stream, &mut encoder)?;
-        } else {
-            let output_stream = open_output(&output)?;
-            let mut encoder = BzEncoder::new(output_stream, level);
-            copy_with_progress(
-                &mut input_stream,
-                &mut encoder,
-                self.progress_args.chunk_size.size_in_bytes,
-                file_size,
-                self.progress_args.progress,
-                &output,
-            )?;
-        }
-
+        let (input_stream, file_size) = open_input(input, "Bzip2")?;
+        let (writer, target) = prepare_output(output)?;
+        let mut encoder = BzEncoder::new(writer, Compression::new(self.level as u32));
+        copy_stream(
+            input_stream,
+            &mut encoder,
+            file_size,
+            &self.progress_args,
+            target,
+        )?;
         Ok(())
     }
 
-    /// Extract a bz2 archive to a file or pipe
+    /// Extract a bz2 archive to a file or pipe. Unlike most decoders,
+    /// `BzDecoder` is write-driven: it wraps the output writer and we feed
+    /// compressed bytes into it.
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "Bzip2")?;
-        let (mut input_stream, file_size) = open_input(input, "Bzip2")?;
-
-        if let CmprssOutput::Writer(writer) = output {
-            let mut decoder = BzDecoder::new(writer);
-            io::copy(&mut input_stream, &mut decoder)?;
-        } else {
-            let output_stream = open_output(&output)?;
-            let mut decoder = BzDecoder::new(output_stream);
-            copy_with_progress(
-                &mut input_stream,
-                &mut decoder,
-                self.progress_args.chunk_size.size_in_bytes,
-                file_size,
-                self.progress_args.progress,
-                &output,
-            )?;
-        }
-
+        let (input_stream, file_size) = open_input(input, "Bzip2")?;
+        let (writer, target) = prepare_output(output)?;
+        let mut decoder = BzDecoder::new(writer);
+        copy_stream(
+            input_stream,
+            &mut decoder,
+            file_size,
+            &self.progress_args,
+            target,
+        )?;
         Ok(())
     }
 }

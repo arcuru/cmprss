@@ -1,10 +1,9 @@
-use super::stream::{guard_file_output, open_input, open_output};
-use crate::progress::{ProgressArgs, copy_with_progress};
+use super::stream::{copy_stream, guard_file_output, open_input, prepare_output};
+use crate::progress::ProgressArgs;
 use crate::utils::{
     CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor, LevelArgs, Result,
 };
 use clap::Args;
-use std::io;
 use zstd::stream::{read::Decoder, write::Encoder};
 
 /// Zstd-specific compression validator (-7 to 22 range)
@@ -82,26 +81,17 @@ impl Compressor for Zstd {
     /// Compress an input file or pipe to a zstd archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "Zstd")?;
-        let (mut input_stream, file_size) = open_input(input, "Zstd")?;
-
-        if let CmprssOutput::Writer(writer) = output {
-            let mut encoder = Encoder::new(writer, self.compression_level)?;
-            io::copy(&mut input_stream, &mut encoder)?;
-            encoder.finish()?;
-        } else {
-            let output_stream = open_output(&output)?;
-            let mut encoder = Encoder::new(output_stream, self.compression_level)?;
-            copy_with_progress(
-                &mut input_stream,
-                &mut encoder,
-                self.progress_args.chunk_size.size_in_bytes,
-                file_size,
-                self.progress_args.progress,
-                &output,
-            )?;
-            encoder.finish()?;
-        }
-
+        let (input_stream, file_size) = open_input(input, "Zstd")?;
+        let (writer, target) = prepare_output(output)?;
+        let mut encoder = Encoder::new(writer, self.compression_level)?;
+        copy_stream(
+            input_stream,
+            &mut encoder,
+            file_size,
+            &self.progress_args,
+            target,
+        )?;
+        encoder.finish()?;
         Ok(())
     }
 
@@ -109,22 +99,9 @@ impl Compressor for Zstd {
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "Zstd")?;
         let (input_stream, file_size) = open_input(input, "Zstd")?;
-        let mut decoder = Decoder::new(input_stream)?;
-
-        if let CmprssOutput::Writer(mut writer) = output {
-            io::copy(&mut decoder, &mut writer)?;
-        } else {
-            let mut output_stream = open_output(&output)?;
-            copy_with_progress(
-                &mut decoder,
-                &mut output_stream,
-                self.progress_args.chunk_size.size_in_bytes,
-                file_size,
-                self.progress_args.progress,
-                &output,
-            )?;
-        }
-
+        let decoder = Decoder::new(input_stream)?;
+        let (writer, target) = prepare_output(output)?;
+        copy_stream(decoder, writer, file_size, &self.progress_args, target)?;
         Ok(())
     }
 }

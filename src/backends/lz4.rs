@@ -1,9 +1,8 @@
-use super::stream::{guard_file_output, open_input, open_output};
-use crate::progress::{ProgressArgs, copy_with_progress};
+use super::stream::{copy_stream, guard_file_output, open_input, prepare_output};
+use crate::progress::ProgressArgs;
 use crate::utils::{CmprssInput, CmprssOutput, CommonArgs, Compressor, Result};
 use clap::Args;
 use lz4_flex::frame::{FrameDecoder, FrameEncoder};
-use std::io;
 
 #[derive(Args, Debug)]
 pub struct Lz4Args {
@@ -41,26 +40,17 @@ impl Compressor for Lz4 {
     /// Compress an input file or pipe to a lz4 archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "LZ4")?;
-        let (mut input_stream, file_size) = open_input(input, "LZ4")?;
-
-        if let CmprssOutput::Writer(writer) = output {
-            let mut encoder = FrameEncoder::new(writer);
-            io::copy(&mut input_stream, &mut encoder)?;
-            encoder.finish()?;
-        } else {
-            let output_stream = open_output(&output)?;
-            let mut encoder = FrameEncoder::new(output_stream);
-            copy_with_progress(
-                &mut input_stream,
-                &mut encoder,
-                self.progress_args.chunk_size.size_in_bytes,
-                file_size,
-                self.progress_args.progress,
-                &output,
-            )?;
-            encoder.finish()?;
-        }
-
+        let (input_stream, file_size) = open_input(input, "LZ4")?;
+        let (writer, target) = prepare_output(output)?;
+        let mut encoder = FrameEncoder::new(writer);
+        copy_stream(
+            input_stream,
+            &mut encoder,
+            file_size,
+            &self.progress_args,
+            target,
+        )?;
+        encoder.finish()?;
         Ok(())
     }
 
@@ -68,22 +58,9 @@ impl Compressor for Lz4 {
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "LZ4")?;
         let (input_stream, file_size) = open_input(input, "LZ4")?;
-        let mut decoder = FrameDecoder::new(input_stream);
-
-        if let CmprssOutput::Writer(mut writer) = output {
-            io::copy(&mut decoder, &mut writer)?;
-        } else {
-            let mut output_stream = open_output(&output)?;
-            copy_with_progress(
-                &mut decoder,
-                &mut output_stream,
-                self.progress_args.chunk_size.size_in_bytes,
-                file_size,
-                self.progress_args.progress,
-                &output,
-            )?;
-        }
-
+        let decoder = FrameDecoder::new(input_stream);
+        let (writer, target) = prepare_output(output)?;
+        copy_stream(decoder, writer, file_size, &self.progress_args, target)?;
         Ok(())
     }
 }

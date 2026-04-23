@@ -1,5 +1,5 @@
-use super::stream::{guard_file_output, open_input, open_output};
-use crate::progress::{ProgressArgs, copy_with_progress};
+use super::stream::{copy_stream, guard_file_output, open_input, prepare_output};
+use crate::progress::ProgressArgs;
 use crate::utils::{
     CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
     DefaultCompressionValidator, LevelArgs, Result,
@@ -7,7 +7,6 @@ use crate::utils::{
 use clap::Args;
 use flate2::write::GzEncoder;
 use flate2::{Compression, read::GzDecoder};
-use std::io;
 
 #[derive(Args, Debug)]
 pub struct GzipArgs {
@@ -59,26 +58,17 @@ impl Compressor for Gzip {
     /// Compress an input file or pipe to a gzip archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "Gzip")?;
-        let (mut input_stream, file_size) = open_input(input, "Gzip")?;
-        let level = Compression::new(self.compression_level as u32);
-
-        if let CmprssOutput::Writer(writer) = output {
-            let mut encoder = GzEncoder::new(writer, level);
-            io::copy(&mut input_stream, &mut encoder)?;
-            encoder.finish()?;
-        } else {
-            let output_stream = open_output(&output)?;
-            let mut encoder = GzEncoder::new(output_stream, level);
-            copy_with_progress(
-                &mut input_stream,
-                &mut encoder,
-                self.progress_args.chunk_size.size_in_bytes,
-                file_size,
-                self.progress_args.progress,
-                &output,
-            )?;
-            encoder.finish()?;
-        }
+        let (input_stream, file_size) = open_input(input, "Gzip")?;
+        let (writer, target) = prepare_output(output)?;
+        let mut encoder = GzEncoder::new(writer, Compression::new(self.compression_level as u32));
+        copy_stream(
+            input_stream,
+            &mut encoder,
+            file_size,
+            &self.progress_args,
+            target,
+        )?;
+        encoder.finish()?;
         Ok(())
     }
 
@@ -86,21 +76,9 @@ impl Compressor for Gzip {
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "Gzip")?;
         let (input_stream, file_size) = open_input(input, "Gzip")?;
-        let mut decoder = GzDecoder::new(input_stream);
-
-        if let CmprssOutput::Writer(mut writer) = output {
-            io::copy(&mut decoder, &mut writer)?;
-        } else {
-            let mut output_stream = open_output(&output)?;
-            copy_with_progress(
-                &mut decoder,
-                &mut output_stream,
-                self.progress_args.chunk_size.size_in_bytes,
-                file_size,
-                self.progress_args.progress,
-                &output,
-            )?;
-        }
+        let decoder = GzDecoder::new(input_stream);
+        let (writer, target) = prepare_output(output)?;
+        copy_stream(decoder, writer, file_size, &self.progress_args, target)?;
         Ok(())
     }
 }

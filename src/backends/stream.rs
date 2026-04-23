@@ -6,10 +6,11 @@
 //! `Reader`/`Writer` variants untouched for pipeline stages. These helpers
 //! consolidate that plumbing so each backend only expresses its codec choice.
 
-use crate::utils::{CmprssInput, CmprssOutput, Result};
+use crate::progress::{OutputTarget, ProgressArgs, copy_with_progress};
+use crate::utils::{CmprssInput, CmprssOutput, Result, WriteWrapper};
 use anyhow::bail;
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Read, Write};
+use std::io::{self, BufReader, BufWriter, Read, Write};
 
 /// Resolve a `CmprssInput` into a single boxed `Read` stream for single-stream
 /// codecs. Returns the stream together with the input file's size when known
@@ -48,17 +49,44 @@ pub fn guard_file_output(output: &CmprssOutput, name: &str) -> Result {
     Ok(())
 }
 
-/// Open a `CmprssOutput` as a boxed `Write`.
-///
-/// Callers must destructure `CmprssOutput::Writer` themselves before calling
-/// this — the in-memory `Writer` is already a boxed `Write` and doesn't need
-/// an additional buffering layer.
-pub fn open_output(output: &CmprssOutput) -> Result<Box<dyn Write + Send + '_>> {
+/// Resolve a `CmprssOutput` into an owned boxed writer plus an `OutputTarget`
+/// describing how it should be treated by the copy path (progress bar vs. no
+/// progress, etc.). This consumes the output, so callers that still need to
+/// inspect the `CmprssOutput` variant should capture what they need before
+/// calling.
+pub fn prepare_output(output: CmprssOutput) -> Result<(Box<dyn Write + Send>, OutputTarget)> {
     match output {
-        CmprssOutput::Path(path) => Ok(Box::new(BufWriter::new(File::create(path)?))),
-        CmprssOutput::Pipe(stdout) => Ok(Box::new(BufWriter::new(stdout))),
-        CmprssOutput::Writer(_) => {
-            unreachable!("open_output called with CmprssOutput::Writer; destructure it first")
-        }
+        CmprssOutput::Writer(WriteWrapper(w)) => Ok((w, OutputTarget::InMemory)),
+        CmprssOutput::Pipe(stdout) => Ok((Box::new(BufWriter::new(stdout)), OutputTarget::Stdout)),
+        CmprssOutput::Path(path) => Ok((
+            Box::new(BufWriter::new(File::create(path)?)),
+            OutputTarget::File,
+        )),
     }
+}
+
+/// Copy bytes from `reader` through `writer`, branching on `target`:
+/// pipeline-internal stages use a bare `io::copy` (no progress), while
+/// user-facing outputs go through `copy_with_progress` to show a progress bar
+/// when configured.
+pub fn copy_stream<R: Read, W: Write>(
+    mut reader: R,
+    mut writer: W,
+    file_size: Option<u64>,
+    progress_args: &ProgressArgs,
+    target: OutputTarget,
+) -> Result {
+    if target == OutputTarget::InMemory {
+        io::copy(&mut reader, &mut writer)?;
+    } else {
+        copy_with_progress(
+            reader,
+            writer,
+            progress_args.chunk_size.size_in_bytes,
+            file_size,
+            progress_args.progress,
+            target,
+        )?;
+    }
+    Ok(())
 }

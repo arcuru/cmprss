@@ -1,4 +1,3 @@
-use crate::utils::CmprssOutput;
 use clap::Args;
 use indicatif::{HumanBytes, ProgressBar};
 use std::io::{self, Read, Write};
@@ -12,6 +11,20 @@ pub enum ProgressDisplay {
     Auto,
     On,
     Off,
+}
+
+/// How a resolved `CmprssOutput` should be treated by the progress/copy
+/// helpers. Decoupling this from `CmprssOutput` lets us consume the output
+/// into an owned boxed writer up front and still drive progress-bar decisions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputTarget {
+    /// Path on disk — show progress when enabled.
+    File,
+    /// Stdout — suppress progress in `Auto` mode to avoid mixing with piped
+    /// bytes.
+    Stdout,
+    /// Pipeline-internal writer (channel between stages) — no progress.
+    InMemory,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -77,10 +90,10 @@ pub struct ProgressArgs {
 pub fn create_progress_bar(
     input_size: Option<u64>,
     progress: ProgressDisplay,
-    output: &CmprssOutput,
+    target: OutputTarget,
 ) -> Option<ProgressBar> {
-    match (progress, output) {
-        (ProgressDisplay::Auto, CmprssOutput::Pipe(_)) => None,
+    match (progress, target) {
+        (ProgressDisplay::Auto, OutputTarget::Stdout) => None,
         (ProgressDisplay::Off, _) => None,
         (_, _) => {
             let bar = match input_size {
@@ -237,10 +250,10 @@ pub fn copy_with_progress<R: Read, W: Write>(
     chunk_size: usize,
     input_size: Option<u64>,
     progress_display: ProgressDisplay,
-    output: &CmprssOutput,
+    target: OutputTarget,
 ) -> io::Result<()> {
     // Create the progress bar if needed
-    let progress_bar = create_progress_bar(input_size, progress_display, output);
+    let progress_bar = create_progress_bar(input_size, progress_display, target);
 
     // Create reader and writer with progress tracking
     let mut reader = ProgressReader::new(reader, progress_bar.clone());
