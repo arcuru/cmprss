@@ -361,19 +361,6 @@ fn get_input_filename(input: &CmprssInput) -> Result<&Path> {
     }
 }
 
-/// Expand a compound shortcut extension like `.tgz` into its equivalent
-/// compressor chain, in innermost-to-outermost order. Returns `None` for
-/// extensions that aren't a known shortcut.
-fn expand_shortcut_ext(ext: &str) -> Option<&'static [&'static str]> {
-    match ext {
-        "tgz" => Some(&["tar", "gz"]),
-        "tbz" | "tbz2" => Some(&["tar", "bz2"]),
-        "txz" => Some(&["tar", "xz"]),
-        "tzst" => Some(&["tar", "zst"]),
-        _ => None,
-    }
-}
-
 /// Get a compressor pipeline from a filename by scanning extensions right-to-left
 pub fn get_compressor_from_filename(filename: &Path) -> Option<Box<dyn Compressor>> {
     let file_name = filename.file_name()?.to_str()?;
@@ -386,20 +373,19 @@ pub fn get_compressor_from_filename(filename: &Path) -> Option<Box<dyn Compresso
     // Scan extensions right-to-left, collecting known compressors
     // until hitting an unknown extension or the base name.
     // e.g., "a.b.tar.gz" → gz ✓, tar ✓, b ✗ stop → [gz, tar]
-    // Compound shortcuts like "tgz" expand to their component chain, so
-    // "archive.tgz" behaves identically to "archive.tar.gz".
+    // `chain_from_ext` handles both single-codec extensions and compound
+    // shortcuts like `tgz` (which expand to `[tar, gz]`).
     let mut compressor_names: Vec<String> = Vec::new();
     for ext in parts[1..].iter().rev() {
-        if let Some(chain) = expand_shortcut_ext(ext) {
-            // chain is innermost→outermost; we push in right-to-left order
-            // (outermost first) to match how we're walking the filename.
-            for name in chain.iter().rev() {
-                compressor_names.push((*name).to_string());
+        match backends::chain_from_ext(ext) {
+            Some(chain) => {
+                // chain is innermost→outermost; we walk the filename
+                // right-to-left so we push outermost first.
+                for c in chain.iter().rev() {
+                    compressor_names.push(c.name().to_string());
+                }
             }
-        } else if let Some(c) = backends::compressor_from_str(ext) {
-            compressor_names.push(c.name().to_string());
-        } else {
-            break;
+            None => break,
         }
     }
 

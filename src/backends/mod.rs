@@ -42,3 +42,20 @@ pub fn compressor_from_str(s: &str) -> Option<Box<dyn Compressor>> {
         _ => None,
     }
 }
+
+/// Resolve an extension to a compressor chain in innermost→outermost order.
+/// Single-codec extensions (`gz`, `xz`, `tar`, …) produce a one-element chain;
+/// compound shortcut extensions (`tgz`, `tbz`, `tbz2`, `txz`, `tzst`) expand
+/// into the chain they represent (e.g. `tgz` → `[tar, gz]`).
+///
+/// This is the single source of truth for what any archive-like extension
+/// means. Both single extensions and compound shortcuts flow through here.
+pub fn chain_from_ext(ext: &str) -> Option<Vec<Box<dyn Compressor>>> {
+    match ext {
+        "tgz" => Some(vec![Box::<Tar>::default(), Box::<Gzip>::default()]),
+        "tbz" | "tbz2" => Some(vec![Box::<Tar>::default(), Box::<Bzip2>::default()]),
+        "txz" => Some(vec![Box::<Tar>::default(), Box::<Xz>::default()]),
+        "tzst" => Some(vec![Box::<Tar>::default(), Box::<Zstd>::default()]),
+        _ => compressor_from_str(ext).map(|c| vec![c]),
+    }
+}
