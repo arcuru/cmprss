@@ -1,8 +1,12 @@
-use crate::utils::{CmprssInput, CmprssOutput, CommonArgs, Compressor, ExtractedTarget, Result};
+use crate::utils::{
+    CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
+    DefaultCompressionValidator, ExtractedTarget, LevelArgs, Result,
+};
 use anyhow::bail;
 use clap::Args;
 use sevenz_rust2::{
     ArchiveEntry, ArchiveReader, ArchiveWriter, Password, decompress, decompress_file,
+    encoder_options::Lzma2Options,
 };
 use std::fs::File;
 use std::io::{self, Seek, SeekFrom, Write};
@@ -13,18 +17,35 @@ use tempfile::tempfile;
 pub struct SevenZArgs {
     #[clap(flatten)]
     pub common_args: CommonArgs,
+
+    #[clap(flatten)]
+    pub level_args: LevelArgs,
 }
 
-#[derive(Default, Clone)]
-pub struct SevenZ {}
+#[derive(Clone)]
+pub struct SevenZ {
+    pub compression_level: i32,
+}
+
+impl Default for SevenZ {
+    fn default() -> Self {
+        SevenZ {
+            compression_level: DefaultCompressionValidator.default_level(),
+        }
+    }
+}
 
 impl SevenZ {
-    pub fn new(_args: &SevenZArgs) -> SevenZ {
-        SevenZ {}
+    pub fn new(args: &SevenZArgs) -> SevenZ {
+        SevenZ {
+            compression_level: args.level_args.resolve(&DefaultCompressionValidator),
+        }
     }
 
     fn compress_to_file<W: Write + Seek>(&self, input: CmprssInput, writer: W) -> Result {
         let mut aw = ArchiveWriter::new(writer)?;
+        let lzma = Lzma2Options::from_level(self.compression_level as u32);
+        aw.set_content_methods(vec![lzma.into()]);
 
         match input {
             CmprssInput::Path(paths) => {
@@ -215,6 +236,22 @@ mod tests {
     fn test_sevenz_default_compression() -> Result {
         let compressor = SevenZ::default();
         test_compression(&compressor)
+    }
+
+    #[test]
+    fn test_sevenz_fast_compression() -> Result {
+        let fast_compressor = SevenZ {
+            compression_level: 1,
+        };
+        test_compression(&fast_compressor)
+    }
+
+    #[test]
+    fn test_sevenz_best_compression() -> Result {
+        let best_compressor = SevenZ {
+            compression_level: 9,
+        };
+        test_compression(&best_compressor)
     }
 
     #[test]
