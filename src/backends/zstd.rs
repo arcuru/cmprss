@@ -43,6 +43,7 @@ pub struct ZstdArgs {
     pub progress_args: ProgressArgs,
 }
 
+#[derive(Clone)]
 pub struct Zstd {
     pub compression_level: i32,
     pub progress_args: ProgressArgs,
@@ -76,6 +77,10 @@ impl Compressor for Zstd {
     /// Full name for zstd.
     fn name(&self) -> &str {
         "zstd"
+    }
+
+    fn clone_boxed(&self) -> Box<dyn Compressor> {
+        Box::new(self.clone())
     }
 
     /// Compress an input file or pipe to a zstd archive

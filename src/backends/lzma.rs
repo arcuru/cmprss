@@ -45,6 +45,7 @@ pub struct LzmaArgs {
     pub level_args: LevelArgs,
 }
 
+#[derive(Clone)]
 pub struct Lzma {
     pub level: i32,
     pub progress_args: ProgressArgs,
@@ -89,6 +90,10 @@ impl Compressor for Lzma {
     /// Full name for lzma.
     fn name(&self) -> &str {
         "lzma"
+    }
+
+    fn clone_boxed(&self) -> Box<dyn Compressor> {
+        Box::new(self.clone())
     }
 
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {

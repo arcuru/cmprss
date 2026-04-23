@@ -13,7 +13,7 @@ pub struct Lz4Args {
     pub progress_args: ProgressArgs,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Lz4 {
     pub progress_args: ProgressArgs,
 }
@@ -35,6 +35,10 @@ impl Compressor for Lz4 {
     /// Full name for lz4.
     fn name(&self) -> &str {
         "lz4"
+    }
+
+    fn clone_boxed(&self) -> Box<dyn Compressor> {
+        Box::new(self.clone())
     }
 
     /// Compress an input file or pipe to a lz4 archive

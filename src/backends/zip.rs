@@ -15,7 +15,7 @@ pub struct ZipArgs {
     pub common_args: CommonArgs,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Zip {}
 
 impl Zip {
@@ -62,6 +62,10 @@ impl Zip {
 impl Compressor for Zip {
     fn name(&self) -> &str {
         "zip"
+    }
+
+    fn clone_boxed(&self) -> Box<dyn Compressor> {
+        Box::new(self.clone())
     }
 
     /// Zip extracts to a directory by default

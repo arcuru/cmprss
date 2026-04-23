@@ -178,6 +178,12 @@ pub trait Compressor: Send + Sync {
     /// Name of this Compressor
     fn name(&self) -> &str;
 
+    /// Produce an owned copy of this compressor, preserving all configuration
+    /// (compression level, progress args, pipeline chain, etc). `Pipeline`
+    /// uses this to hand owned instances to worker threads without losing
+    /// user-supplied settings.
+    fn clone_boxed(&self) -> Box<dyn Compressor>;
+
     /// Default extension for this Compressor
     fn extension(&self) -> &str {
         self.name()
@@ -317,11 +323,16 @@ mod tests {
     use std::path::Path;
 
     /// A simple implementation of the Compressor trait for testing
+    #[derive(Clone)]
     struct TestCompressor;
 
     impl Compressor for TestCompressor {
         fn name(&self) -> &str {
             "test"
+        }
+
+        fn clone_boxed(&self) -> Box<dyn Compressor> {
+            Box::new(self.clone())
         }
 
         // We'll use the default implementation for extension() and other methods
@@ -336,6 +347,7 @@ mod tests {
     }
 
     /// A compressor that overrides the default extension
+    #[derive(Clone)]
     struct CustomExtensionCompressor;
 
     impl Compressor for CustomExtensionCompressor {
@@ -345,6 +357,10 @@ mod tests {
 
         fn extension(&self) -> &str {
             "cst"
+        }
+
+        fn clone_boxed(&self) -> Box<dyn Compressor> {
+            Box::new(self.clone())
         }
 
         fn compress(&self, _: CmprssInput, _: CmprssOutput) -> Result {

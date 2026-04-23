@@ -27,11 +27,6 @@ impl Pipeline {
             .collect::<Vec<&str>>()
             .join(".")
     }
-
-    fn create_compressor(name: &str) -> Result<Box<dyn Compressor>> {
-        crate::backends::compressor_from_str(name)
-            .ok_or_else(|| anyhow!("Unknown compressor type: {}", name))
-    }
 }
 
 /// A reader that reads from a receiver channel
@@ -146,6 +141,12 @@ impl Compressor for Pipeline {
             .name()
     }
 
+    fn clone_boxed(&self) -> Box<dyn Compressor> {
+        Box::new(Pipeline {
+            compressors: self.compressors.iter().map(|c| c.clone_boxed()).collect(),
+        })
+    }
+
     fn extension(&self) -> &str {
         self.compressors
             .last()
@@ -205,11 +206,8 @@ impl Compressor for Pipeline {
             return self.compressors[0].compress(input, output);
         }
 
-        let mut op_compressors: Vec<Box<dyn Compressor>> = self
-            .compressors
-            .iter()
-            .map(|c| Self::create_compressor(c.name()))
-            .collect::<Result<Vec<_>>>()?;
+        let mut op_compressors: Vec<Box<dyn Compressor>> =
+            self.compressors.iter().map(|c| c.clone_boxed()).collect();
 
         let mut handles = Vec::new();
         let mut current_thread_input = input; // Consumed by the first (innermost) compressor
@@ -259,8 +257,8 @@ impl Compressor for Pipeline {
             .compressors
             .iter()
             .rev()
-            .map(|c| Self::create_compressor(c.name()))
-            .collect::<Result<Vec<_>>>()?;
+            .map(|c| c.clone_boxed())
+            .collect();
 
         let mut handles = Vec::new();
         let mut current_thread_input = input; // Consumed by the first (outermost) extractor
@@ -331,8 +329,8 @@ impl Compressor for Pipeline {
             .compressors
             .iter()
             .rev()
-            .map(|c| Self::create_compressor(c.name()))
-            .collect::<Result<Vec<_>>>()?;
+            .map(|c| c.clone_boxed())
+            .collect();
 
         let mut handles = Vec::new();
         let mut current_thread_input = input;
@@ -404,6 +402,46 @@ mod tests {
 
         let extracted_content = fs::read_to_string(extracted_file)?;
         assert_eq!(extracted_content, test_content);
+
+        Ok(())
+    }
+
+    /// Regression test: per-stage configuration (e.g. `--level 1` vs
+    /// `--level 9` on the outer gzip of a `.tar.gz`) must survive the
+    /// thread-dispatch in `Pipeline::compress`. Previously the pipeline
+    /// reconstructed each stage from its *name* alone, producing a default
+    /// Gzip regardless of the level the user requested.
+    #[test]
+    fn test_pipeline_preserves_stage_config() -> Result {
+        use crate::progress::ProgressArgs;
+
+        let temp_dir = tempdir()?;
+        let input = temp_dir.path().join("input.txt");
+        // Repetitive content amplifies the level difference in output size.
+        fs::write(&input, "0123456789abcdef".repeat(1024))?;
+
+        let run = |level: i32, suffix: &str| -> Result<u64> {
+            let fast = Pipeline::new(vec![
+                Box::new(crate::backends::Tar::default()),
+                Box::new(crate::backends::Gzip {
+                    compression_level: level,
+                    progress_args: ProgressArgs::default(),
+                }),
+            ]);
+            let out = temp_dir.path().join(format!("out.{suffix}.tar.gz"));
+            fast.compress(
+                CmprssInput::Path(vec![input.clone()]),
+                CmprssOutput::Path(out.clone()),
+            )?;
+            Ok(fs::metadata(&out)?.len())
+        };
+
+        let fast_size = run(1, "fast")?;
+        let best_size = run(9, "best")?;
+        assert!(
+            best_size < fast_size,
+            "expected best (level 9) to be smaller than fast (level 1), got {best_size} >= {fast_size}",
+        );
 
         Ok(())
     }

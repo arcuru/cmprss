@@ -46,6 +46,7 @@ pub struct Bzip2Args {
     pub level_args: LevelArgs,
 }
 
+#[derive(Clone)]
 pub struct Bzip2 {
     pub level: i32, // 1-9
     pub progress_args: ProgressArgs,
@@ -79,6 +80,10 @@ impl Compressor for Bzip2 {
     /// Name of this compressor
     fn name(&self) -> &str {
         "bzip2"
+    }
+
+    fn clone_boxed(&self) -> Box<dyn Compressor> {
+        Box::new(self.clone())
     }
 
     /// Compress an input file or pipe to a bz2 archive

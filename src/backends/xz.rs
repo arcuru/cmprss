@@ -22,6 +22,7 @@ pub struct XzArgs {
     pub level_args: LevelArgs,
 }
 
+#[derive(Clone)]
 pub struct Xz {
     pub level: i32,
     pub progress_args: ProgressArgs,
@@ -55,6 +56,10 @@ impl Compressor for Xz {
     /// Full name for xz.
     fn name(&self) -> &str {
         "xz"
+    }
+
+    fn clone_boxed(&self) -> Box<dyn Compressor> {
+        Box::new(self.clone())
     }
 
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {

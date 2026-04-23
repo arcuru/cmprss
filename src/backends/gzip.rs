@@ -20,6 +20,7 @@ pub struct GzipArgs {
     pub progress_args: ProgressArgs,
 }
 
+#[derive(Clone)]
 pub struct Gzip {
     pub compression_level: i32,
     pub progress_args: ProgressArgs,
@@ -53,6 +54,10 @@ impl Compressor for Gzip {
     /// Full name for gzip.
     fn name(&self) -> &str {
         "gzip"
+    }
+
+    fn clone_boxed(&self) -> Box<dyn Compressor> {
+        Box::new(self.clone())
     }
 
     /// Compress an input file or pipe to a gzip archive

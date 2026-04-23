@@ -15,7 +15,7 @@ pub struct TarArgs {
     pub common_args: CommonArgs,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Tar {}
 
 impl Tar {
@@ -28,6 +28,10 @@ impl Compressor for Tar {
     /// Full name for tar, also used for extension
     fn name(&self) -> &str {
         "tar"
+    }
+
+    fn clone_boxed(&self) -> Box<dyn Compressor> {
+        Box::new(self.clone())
     }
 
     /// Tar extracts to a directory by default

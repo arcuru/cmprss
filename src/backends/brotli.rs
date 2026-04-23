@@ -52,6 +52,7 @@ pub struct BrotliArgs {
     pub progress_args: ProgressArgs,
 }
 
+#[derive(Clone)]
 pub struct Brotli {
     pub compression_level: i32,
     pub progress_args: ProgressArgs,
@@ -85,6 +86,10 @@ impl Compressor for Brotli {
     /// Full name for brotli.
     fn name(&self) -> &str {
         "brotli"
+    }
+
+    fn clone_boxed(&self) -> Box<dyn Compressor> {
+        Box::new(self.clone())
     }
 
     /// Compress an input file or pipe to a brotli archive

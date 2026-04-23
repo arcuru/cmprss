@@ -15,7 +15,7 @@ pub struct SnappyArgs {
     pub progress_args: ProgressArgs,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Snappy {
     pub progress_args: ProgressArgs,
 }
@@ -38,6 +38,10 @@ impl Compressor for Snappy {
     /// Full name for snappy.
     fn name(&self) -> &str {
         "snappy"
+    }
+
+    fn clone_boxed(&self) -> Box<dyn Compressor> {
+        Box::new(self.clone())
     }
 
     /// Compress an input file or pipe to a snappy frame-format archive
