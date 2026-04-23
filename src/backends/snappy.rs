@@ -1,6 +1,6 @@
 use super::stream::{guard_file_output, open_input, open_output};
 use crate::progress::{ProgressArgs, copy_with_progress};
-use crate::utils::*;
+use crate::utils::{CmprssInput, CmprssOutput, CommonArgs, Compressor, Result};
 use clap::Args;
 use snap::read::FrameDecoder;
 use snap::write::FrameEncoder;

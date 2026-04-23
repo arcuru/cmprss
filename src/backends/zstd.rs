@@ -1,6 +1,8 @@
 use super::stream::{guard_file_output, open_input, open_output};
 use crate::progress::{ProgressArgs, copy_with_progress};
-use crate::utils::*;
+use crate::utils::{
+    CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor, LevelArgs, Result,
+};
 use clap::Args;
 use std::io;
 use zstd::stream::{read::Decoder, write::Encoder};

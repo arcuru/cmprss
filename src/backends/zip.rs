@@ -1,4 +1,6 @@
-use crate::utils::*;
+use crate::utils::{
+    CmprssInput, CmprssOutput, CommonArgs, Compressor, ExtractedTarget, Result,
+};
 use anyhow::bail;
 use clap::Args;
 use std::fs::File;

@@ -1,7 +1,10 @@
 use super::stream::{guard_file_output, open_input, open_output};
 use crate::{
     progress::{ProgressArgs, copy_with_progress},
-    utils::*,
+    utils::{
+        CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
+        DefaultCompressionValidator, LevelArgs, Result,
+    },
 };
 use clap::Args;
 use std::io;

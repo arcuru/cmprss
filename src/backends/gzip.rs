@@ -1,6 +1,9 @@
 use super::stream::{guard_file_output, open_input, open_output};
 use crate::progress::{ProgressArgs, copy_with_progress};
-use crate::utils::*;
+use crate::utils::{
+    CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
+    DefaultCompressionValidator, ExtractedTarget, LevelArgs, Result,
+};
 use clap::Args;
 use flate2::write::GzEncoder;
 use flate2::{Compression, read::GzDecoder};

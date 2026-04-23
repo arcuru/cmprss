@@ -1,4 +1,6 @@
-use crate::utils::*;
+use crate::utils::{
+    CmprssInput, CmprssOutput, Compressor, ExtractedTarget, ReadWrapper, Result, WriteWrapper,
+};
 use anyhow::anyhow;
 use std::io::{self, Read, Write};
 use std::path::Path;
