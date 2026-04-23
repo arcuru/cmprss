@@ -34,6 +34,30 @@ For Nix users, the repository contains a flake and an overlay. `nix run github:a
 
 A fully static musl-linked binary is also available for Linux: `nix build github:arcuru/cmprss#cmprss-static`
 
+### Shell Completions
+
+The Nix package installs Bash, Fish, and Zsh completions automatically.
+
+For other installations, add the matching snippet to your shell profile. Supported shells: `bash`, `elvish`, `fish`, `powershell`, `zsh`.
+
+Bash (`~/.bashrc`):
+
+```bash
+source <(cmprss completions bash)
+```
+
+Zsh (`~/.zshrc`):
+
+```bash
+source <(cmprss completions zsh)
+```
+
+Fish (`~/.config/fish/config.fish`):
+
+```fish
+cmprss completions fish | source
+```
+
 ## Usage
 
 The primary goal is to infer behavior based on the input, so that you don't need to remember esoteric CLI arguments.

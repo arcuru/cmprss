@@ -82,6 +82,13 @@
           // {
             doCheck = false; # Tests are run as a separate build with nextest
             meta.mainProgram = "cmprss";
+            nativeBuildInputs = commonArgs.nativeBuildInputs ++ [pkgs.installShellFiles];
+            postInstall = pkgs.lib.optionalString (pkgs.stdenv.buildPlatform.canExecute pkgs.stdenv.hostPlatform) ''
+              installShellCompletion --cmd cmprss \
+                --bash <($out/bin/cmprss completions bash) \
+                --fish <($out/bin/cmprss completions fish) \
+                --zsh <($out/bin/cmprss completions zsh)
+            '';
           });
 
         # Fully static musl build (Linux only)
@@ -122,6 +129,13 @@
                 cargoArtifacts = cargoArtifactsStatic;
                 doCheck = false;
                 meta.mainProgram = "cmprss";
+                nativeBuildInputs = staticArgs.nativeBuildInputs ++ [pkgs.installShellFiles];
+                postInstall = pkgs.lib.optionalString (pkgs.stdenv.buildPlatform.canExecute pkgs.stdenv.hostPlatform) ''
+                  installShellCompletion --cmd cmprss \
+                    --bash <($out/bin/cmprss completions bash) \
+                    --fish <($out/bin/cmprss completions fish) \
+                    --zsh <($out/bin/cmprss completions zsh)
+                '';
               });
           }
         );
