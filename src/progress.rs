@@ -1,6 +1,6 @@
 use clap::Args;
 use indicatif::{HumanBytes, ProgressBar};
-use std::io::{self, Read, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::str::FromStr;
 use std::time::Duration;
 use std::time::Instant;
@@ -179,6 +179,12 @@ impl<R: Read> Read for ProgressReader<R> {
             self.maybe_update_progress(bytes_read as u64);
         }
         Ok(bytes_read)
+    }
+}
+
+impl<R: Seek> Seek for ProgressReader<R> {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        self.inner.seek(pos)
     }
 }
 

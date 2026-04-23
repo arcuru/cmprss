@@ -56,6 +56,22 @@ impl Zip {
             .compression_level(Some(self.compression_level as i64))
     }
 
+    fn extract_seekable<R: std::io::Read + Seek>(
+        &self,
+        reader: R,
+        size: u64,
+        out_dir: &Path,
+    ) -> Result {
+        let bar = create_progress_bar(Some(size), self.progress_args.progress, OutputTarget::File);
+        let reader = ProgressReader::new(reader, bar.clone());
+        let mut archive = ZipArchive::new(reader)?;
+        archive.extract(out_dir)?;
+        if let Some(b) = bar {
+            b.finish();
+        }
+        Ok(())
+    }
+
     fn compress_to_file<W: Write + Seek>(
         &self,
         input: CmprssInput,
@@ -166,8 +182,8 @@ impl Compressor for Zip {
                             bail!("zip extraction expects exactly one archive file");
                         }
                         let file = File::open(&paths[0])?;
-                        let mut archive = ZipArchive::new(file)?;
-                        Ok(archive.extract(out_dir)?)
+                        let size = file.metadata()?.len();
+                        self.extract_seekable(file, size, out_dir)
                     }
                     CmprssInput::Pipe(mut pipe) => {
                         // Create a temporary file to store the zip content
@@ -178,10 +194,8 @@ impl Compressor for Zip {
 
                         // Reset the file position to the beginning
                         temp_file.seek(SeekFrom::Start(0))?;
-
-                        // Extract from the temporary file
-                        let mut archive = ZipArchive::new(temp_file)?;
-                        Ok(archive.extract(out_dir)?)
+                        let size = temp_file.metadata()?.len();
+                        self.extract_seekable(temp_file, size, out_dir)
                     }
                     CmprssInput::Reader(_) => {
                         bail!(
