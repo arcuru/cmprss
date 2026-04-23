@@ -13,6 +13,15 @@ pub struct Pipeline {
     compressors: Vec<Box<dyn Compressor>>,
 }
 
+/// Which method intermediate (threaded) stages should invoke. The final stage
+/// always runs on the calling thread and is handled by a caller-supplied
+/// closure — only the intermediate layers need this dispatch.
+#[derive(Clone, Copy)]
+enum StageAction {
+    Compress,
+    Extract,
+}
+
 impl Pipeline {
     /// Create a new Pipeline with the given compressors
     pub fn new(compressors: Vec<Box<dyn Compressor>>) -> Self {
@@ -26,6 +35,51 @@ impl Pipeline {
             .map(|c| c.extension())
             .collect::<Vec<&str>>()
             .join(".")
+    }
+
+    /// Run an ordered chain of compressor stages, with each non-final stage
+    /// in its own thread linked by an in-memory pipe. The final (last) stage
+    /// runs on the calling thread via `finalize`. Intermediate stages all
+    /// invoke the same method — `compress` going outward through a
+    /// compression pipeline, `extract` unwrapping layers on the way in.
+    fn run_threaded<F>(
+        stages: Vec<Box<dyn Compressor>>,
+        initial_input: CmprssInput,
+        intermediate: StageAction,
+        finalize: F,
+    ) -> Result
+    where
+        F: FnOnce(Box<dyn Compressor>, CmprssInput) -> Result,
+    {
+        debug_assert!(!stages.is_empty(), "pipeline is never empty");
+        let mut stages = stages;
+        let last = stages.pop().expect("pipeline is never empty");
+        let buffer_size = 64 * 1024;
+        let mut current_input = initial_input;
+        let mut handles = Vec::new();
+
+        for stage in stages {
+            let (sender, receiver) = channel::<Vec<u8>>();
+            let stage_output =
+                CmprssOutput::Writer(WriteWrapper(Box::new(PipeWriter::new(sender, buffer_size))));
+            let next_input = CmprssInput::Reader(ReadWrapper(Box::new(PipeReader::new(receiver))));
+            let stage_input = std::mem::replace(&mut current_input, next_input);
+
+            let handle = thread::spawn(move || match intermediate {
+                StageAction::Compress => stage.compress(stage_input, stage_output),
+                StageAction::Extract => stage.extract(stage_input, stage_output),
+            });
+            handles.push(handle);
+        }
+
+        finalize(last, current_input)?;
+
+        for handle in handles {
+            handle
+                .join()
+                .map_err(|_| anyhow!("Pipeline stage thread panicked"))??;
+        }
+        Ok(())
     }
 }
 
@@ -201,165 +255,67 @@ impl Compressor for Pipeline {
 
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         debug_assert!(!self.compressors.is_empty(), "pipeline is never empty");
-
         if self.compressors.len() == 1 {
             return self.compressors[0].compress(input, output);
         }
-
-        let mut op_compressors: Vec<Box<dyn Compressor>> =
-            self.compressors.iter().map(|c| c.clone_boxed()).collect();
-
-        let mut handles = Vec::new();
-        let mut current_thread_input = input; // Consumed by the first (innermost) compressor
-        let buffer_size = 64 * 1024;
-
-        // Process all but the last (outermost) compressor in separate threads
-        for _ in 0..op_compressors.len() - 1 {
-            let compressor_for_this_stage = op_compressors.remove(0);
-            let (sender, receiver) = channel::<Vec<u8>>();
-            let pipe_writer = PipeWriter::new(sender, buffer_size);
-            let input_for_next_stage =
-                CmprssInput::Reader(ReadWrapper(Box::new(PipeReader::new(receiver))));
-
-            let actual_input_for_thread = current_thread_input; // Move current input to thread
-            current_thread_input = input_for_next_stage; // Set up input for the *next* stage or final compressor
-
-            let handle = thread::spawn(move || {
-                compressor_for_this_stage.compress(
-                    actual_input_for_thread,
-                    CmprssOutput::Writer(WriteWrapper(Box::new(pipe_writer))),
-                )
-            });
-            handles.push(handle);
-        }
-
-        // The last (outermost) compressor runs in the current thread and writes to the final output
-        let last_compressor = op_compressors.remove(0);
-        // current_thread_input here is the Reader from the penultimate stage
-        last_compressor.compress(current_thread_input, output)?;
-
-        for handle in handles {
-            handle
-                .join()
-                .map_err(|_| anyhow!("Compression thread panicked"))??;
-        }
-        Ok(())
+        // Innermost → outermost: the outermost compressor runs on the main
+        // thread and writes to the user-supplied output.
+        let stages = self.compressors.iter().map(|c| c.clone_boxed()).collect();
+        Self::run_threaded(stages, input, StageAction::Compress, |last, input| {
+            last.compress(input, output)
+        })
     }
 
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         debug_assert!(!self.compressors.is_empty(), "pipeline is never empty");
-
         if self.compressors.len() == 1 {
             return self.compressors[0].extract(input, output);
         }
-
-        let mut op_extractors: Vec<Box<dyn Compressor>> = self
+        // Outermost → innermost: the innermost extractor (typically the
+        // container format like tar/zip) runs on the main thread so it can
+        // unpack into the user-supplied output.
+        let stages = self
             .compressors
             .iter()
             .rev()
             .map(|c| c.clone_boxed())
             .collect();
-
-        let mut handles = Vec::new();
-        let mut current_thread_input = input; // Consumed by the first (outermost) extractor
-        let buffer_size = 64 * 1024;
-
-        // Process all but the last (innermost) extractor in separate threads.
-        for _ in 0..op_extractors.len() - 1 {
-            let extractor_for_this_stage = op_extractors.remove(0);
-            let (sender, receiver) = channel::<Vec<u8>>();
-            let pipe_writer = PipeWriter::new(sender, buffer_size);
-            let intermediate_output_for_thread =
-                CmprssOutput::Writer(WriteWrapper(Box::new(pipe_writer)));
-            let input_for_next_stage =
-                CmprssInput::Reader(ReadWrapper(Box::new(PipeReader::new(receiver))));
-
-            let actual_input_for_thread = current_thread_input; // Move current input to thread
-            current_thread_input = input_for_next_stage; // Set up input for the *next* stage or final extractor
-
-            let handle = thread::spawn(move || {
-                extractor_for_this_stage
-                    .extract(actual_input_for_thread, intermediate_output_for_thread)
-            });
-            handles.push(handle);
-        }
-
-        // The last (innermost) extractor runs in the current thread and writes to the final output
-        let last_extractor = op_extractors.remove(0);
-        // current_thread_input here is the Reader from the penultimate stage
-
-        let final_output = match output {
-            CmprssOutput::Path(ref p) => {
-                if last_extractor.default_extracted_target() == ExtractedTarget::Directory
-                    && !p.exists()
-                {
-                    std::fs::create_dir_all(p)?;
+        Self::run_threaded(stages, input, StageAction::Extract, |last, input| {
+            let final_output = match output {
+                CmprssOutput::Path(ref p) => {
+                    // If the innermost extractor wants a directory and the
+                    // user's output path doesn't exist yet, create it so
+                    // e.g. tar::unpack has somewhere to write.
+                    if last.default_extracted_target() == ExtractedTarget::Directory && !p.exists()
+                    {
+                        std::fs::create_dir_all(p)?;
+                    }
+                    CmprssOutput::Path(p.clone())
                 }
-                // If it's a directory, the tar extractor (usually innermost) will handle it.
-                // The path provided should be the target directory.
-                // Always pass the path; the backend decides how to use it.
-                CmprssOutput::Path(p.clone())
-            }
-            CmprssOutput::Pipe(_) => output,
-            CmprssOutput::Writer(_) => output,
-        };
-
-        last_extractor.extract(current_thread_input, final_output)?;
-
-        for handle in handles {
-            handle
-                .join()
-                .map_err(|_| anyhow!("Extraction thread panicked"))??;
-        }
-        Ok(())
+                CmprssOutput::Pipe(_) | CmprssOutput::Writer(_) => output,
+            };
+            last.extract(input, final_output)
+        })
     }
 
     fn list(&self, input: CmprssInput) -> Result {
         debug_assert!(!self.compressors.is_empty(), "pipeline is never empty");
-
         if self.compressors.len() == 1 {
             return self.compressors[0].list(input);
         }
-
         // Same plumbing as `extract`, except the innermost compressor lists
-        // its entries to stdout instead of unpacking to an output path. Outer
-        // layers still need to decompress into an in-memory pipe so that the
-        // innermost container format sees plain archive bytes.
-        let mut op_extractors: Vec<Box<dyn Compressor>> = self
+        // its entries to stdout instead of unpacking. Outer layers still
+        // decompress into the in-memory pipe so the innermost container sees
+        // plain archive bytes.
+        let stages = self
             .compressors
             .iter()
             .rev()
             .map(|c| c.clone_boxed())
             .collect();
-
-        let mut handles = Vec::new();
-        let mut current_thread_input = input;
-        let buffer_size = 64 * 1024;
-
-        for _ in 0..op_extractors.len() - 1 {
-            let extractor = op_extractors.remove(0);
-            let (sender, receiver) = channel::<Vec<u8>>();
-            let pipe_writer = PipeWriter::new(sender, buffer_size);
-            let stage_output = CmprssOutput::Writer(WriteWrapper(Box::new(pipe_writer)));
-            let next_stage_input =
-                CmprssInput::Reader(ReadWrapper(Box::new(PipeReader::new(receiver))));
-
-            let stage_input = current_thread_input;
-            current_thread_input = next_stage_input;
-
-            let handle = thread::spawn(move || extractor.extract(stage_input, stage_output));
-            handles.push(handle);
-        }
-
-        let innermost = op_extractors.remove(0);
-        innermost.list(current_thread_input)?;
-
-        for handle in handles {
-            handle
-                .join()
-                .map_err(|_| anyhow!("Extraction thread panicked"))??;
-        }
-        Ok(())
+        Self::run_threaded(stages, input, StageAction::Extract, |innermost, input| {
+            innermost.list(input)
+        })
     }
 }
 
