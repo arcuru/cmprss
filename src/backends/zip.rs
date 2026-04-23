@@ -1,9 +1,12 @@
+use super::containers::total_input_bytes;
+use crate::progress::{OutputTarget, ProgressArgs, ProgressReader, create_progress_bar};
 use crate::utils::{
     CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
     DefaultCompressionValidator, ExtractedTarget, LevelArgs, Result,
 };
 use anyhow::bail;
 use clap::Args;
+use indicatif::ProgressBar;
 use std::fs::File;
 use std::io::{self, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -19,17 +22,22 @@ pub struct ZipArgs {
 
     #[clap(flatten)]
     pub level_args: LevelArgs,
+
+    #[clap(flatten)]
+    pub progress_args: ProgressArgs,
 }
 
 #[derive(Clone)]
 pub struct Zip {
     pub compression_level: i32,
+    pub progress_args: ProgressArgs,
 }
 
 impl Default for Zip {
     fn default() -> Self {
         Zip {
             compression_level: DefaultCompressionValidator.default_level(),
+            progress_args: ProgressArgs::default(),
         }
     }
 }
@@ -38,6 +46,7 @@ impl Zip {
     pub fn new(args: &ZipArgs) -> Zip {
         Zip {
             compression_level: args.level_args.resolve(&DefaultCompressionValidator),
+            progress_args: args.progress_args,
         }
     }
 
@@ -47,7 +56,12 @@ impl Zip {
             .compression_level(Some(self.compression_level as i64))
     }
 
-    fn compress_to_file<W: Write + Seek>(&self, input: CmprssInput, writer: W) -> Result {
+    fn compress_to_file<W: Write + Seek>(
+        &self,
+        input: CmprssInput,
+        writer: W,
+        bar: Option<&ProgressBar>,
+    ) -> Result {
         let mut zip_writer = ZipWriter::new(writer);
         let options = self.file_options();
 
@@ -57,12 +71,13 @@ impl Zip {
                     if path.is_file() {
                         let name = path.file_name().unwrap().to_string_lossy();
                         zip_writer.start_file(name, options)?;
-                        let mut f = File::open(&path)?;
-                        io::copy(&mut f, &mut zip_writer)?;
+                        let f = File::open(&path)?;
+                        let mut reader = ProgressReader::new(f, bar.cloned());
+                        io::copy(&mut reader, &mut zip_writer)?;
                     } else if path.is_dir() {
                         // Use the directory as the base and add its contents
                         let base = path.parent().unwrap_or(&path);
-                        add_directory(&mut zip_writer, base, &path, options)?;
+                        add_directory(&mut zip_writer, base, &path, options, bar)?;
                     } else {
                         bail!("zip does not support this file type");
                     }
@@ -100,13 +115,23 @@ impl Compressor for Zip {
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         match output {
             CmprssOutput::Path(ref path) => {
+                let total = match &input {
+                    CmprssInput::Path(paths) => Some(total_input_bytes(paths)),
+                    _ => None,
+                };
+                let bar =
+                    create_progress_bar(total, self.progress_args.progress, OutputTarget::File);
                 let file = File::create(path)?;
-                self.compress_to_file(input, file)
+                self.compress_to_file(input, file, bar.as_ref())?;
+                if let Some(b) = bar {
+                    b.finish();
+                }
+                Ok(())
             }
             CmprssOutput::Pipe(mut pipe) => {
                 // Create a temporary file to write the zip to
                 let mut temp_file = tempfile()?;
-                self.compress_to_file(input, &mut temp_file)?;
+                self.compress_to_file(input, &mut temp_file, None)?;
 
                 // Reset the file position to the beginning
                 temp_file.seek(SeekFrom::Start(0))?;
@@ -117,7 +142,7 @@ impl Compressor for Zip {
             }
             CmprssOutput::Writer(mut writer) => {
                 let mut temp_file = tempfile()?;
-                self.compress_to_file(input, &mut temp_file)?;
+                self.compress_to_file(input, &mut temp_file, None)?;
                 temp_file.seek(SeekFrom::Start(0))?;
                 io::copy(&mut temp_file, &mut writer)?;
                 Ok(())
@@ -230,6 +255,7 @@ fn add_directory<W: Write + Seek>(
     base: &Path,
     path: &Path,
     options: FileOptions<'static, ()>,
+    bar: Option<&ProgressBar>,
 ) -> Result {
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
@@ -242,13 +268,14 @@ fn add_directory<W: Write + Seek>(
             .replace('\\', "/");
         if entry_path.is_file() {
             zip.start_file(name, options)?;
-            let mut f = File::open(&entry_path)?;
-            io::copy(&mut f, zip)?;
+            let f = File::open(&entry_path)?;
+            let mut reader = ProgressReader::new(f, bar.cloned());
+            io::copy(&mut reader, zip)?;
         } else if entry_path.is_dir() {
             // Ensure directory entry ends with '/'
             let dir_name = name.clone() + "/";
             zip.add_directory(dir_name, options)?;
-            add_directory(zip, base, &entry_path, options)?;
+            add_directory(zip, base, &entry_path, options, bar)?;
         }
     }
     Ok(())
@@ -281,6 +308,7 @@ mod tests {
     fn test_zip_fast_compression() -> Result {
         let fast_compressor = Zip {
             compression_level: 1,
+            progress_args: ProgressArgs::default(),
         };
         test_compression(&fast_compressor)
     }
@@ -290,6 +318,7 @@ mod tests {
     fn test_zip_best_compression() -> Result {
         let best_compressor = Zip {
             compression_level: 9,
+            progress_args: ProgressArgs::default(),
         };
         test_compression(&best_compressor)
     }
