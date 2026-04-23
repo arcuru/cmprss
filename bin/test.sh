@@ -224,9 +224,141 @@ test_lz4() {
   echo "No errors detected"
 }
 
+# Test lzma (legacy LZMA1) at the given level against the lzma CLI from xz-utils
+test_lzma_level() {
+  tmpdir
+  echo "Testing lzma level $1 in $PWD"
+  echo "Creating random data"
+  random_file 1000000 file
+  echo "Compressing with lzma and cmprss"
+  lzma --stdout -"$1" file >lzma_file.lzma
+  cmprss lzma --level "$1" file cmprss_file.lzma --progress=off
+  compare_size lzma_file.lzma cmprss_file.lzma
+  echo "Decompressing"
+  lzma --stdout --decompress lzma_file.lzma >lzma_lzma
+  lzma --stdout --decompress cmprss_file.lzma >cmprss_lzma
+  cmprss lzma --extract cmprss_file.lzma cmprss_cmprss --progress=off
+  cmprss lzma --extract lzma_file.lzma lzma_cmprss --progress=off
+  echo "Comparing the decompressed files"
+  compare file lzma_lzma
+  compare file cmprss_lzma
+  compare file cmprss_cmprss
+  compare file lzma_cmprss
+  echo "No errors detected"
+}
+
+test_lzma() {
+  test_lzma_level 1
+  test_lzma_level 6 # Default
+  test_lzma_level 9
+}
+
+# Test brotli at the given quality against the brotli CLI
+test_brotli_level() {
+  tmpdir
+  echo "Testing brotli quality $1 in $PWD"
+  echo "Creating random data"
+  random_file 1000000 file
+  echo "Compressing with brotli and cmprss"
+  brotli --quality="$1" --stdout file >brotli_file.br
+  cmprss brotli --level "$1" file cmprss_file.br --progress=off
+  compare_size brotli_file.br cmprss_file.br
+  echo "Decompressing"
+  brotli --decompress --stdout brotli_file.br >brotli_brotli
+  brotli --decompress --stdout cmprss_file.br >cmprss_brotli
+  cmprss brotli --extract cmprss_file.br cmprss_cmprss --progress=off
+  cmprss brotli --extract brotli_file.br brotli_cmprss --progress=off
+  echo "Comparing the decompressed files"
+  compare file brotli_brotli
+  compare file cmprss_brotli
+  compare file cmprss_cmprss
+  compare file brotli_cmprss
+  echo "No errors detected"
+}
+
+test_brotli() {
+  test_brotli_level 1
+  test_brotli_level 6 # Default
+  test_brotli_level 11
+}
+
+# Test tar archive interop with the tar CLI. Tar has no progress bar, so no
+# --progress flag is passed.
+test_tar() {
+  tmpdir
+  echo "Testing tar in $PWD"
+  echo "Creating random data"
+  random_dir 10 indir
+  echo "Creating tar archives with each tool"
+  tar -cf tar_archive.tar indir
+  cmprss tar indir cmprss_archive.tar
+  echo "Extracting each archive with the opposite tool"
+  mkdir -p tar_from_cmprss
+  tar -xf cmprss_archive.tar -C tar_from_cmprss
+  mkdir -p cmprss_from_tar
+  cmprss tar --extract tar_archive.tar cmprss_from_tar
+  echo "Comparing the extracted contents"
+  compare indir tar_from_cmprss/indir
+  compare indir cmprss_from_tar/indir
+  echo "No errors detected"
+}
+
+# Test zip archive interop with the zip/unzip CLIs. Zip has no progress bar,
+# so no --progress flag is passed.
+test_zip() {
+  tmpdir
+  echo "Testing zip in $PWD"
+  echo "Creating random data"
+  random_dir 10 indir
+  echo "Creating zip archives with each tool"
+  (cd "$(dirname indir)" && zip -qr zip_archive.zip "$(basename indir)")
+  cmprss zip indir cmprss_archive.zip
+  echo "Extracting each archive with the opposite tool"
+  mkdir -p zip_from_cmprss
+  (cd zip_from_cmprss && unzip -q ../cmprss_archive.zip)
+  mkdir -p cmprss_from_zip
+  cmprss zip --extract zip_archive.zip cmprss_from_zip
+  echo "Comparing the extracted contents"
+  compare indir zip_from_cmprss/indir
+  compare indir cmprss_from_zip/indir
+  echo "No errors detected"
+}
+
+# Shared helper for tar.<codec> pipeline interop. Takes the compound extension
+# (tar.gz/tar.xz/tar.zst/tar.bz2) and the corresponding tar short flag
+# (-z/-J/--zstd/-j). Verifies that cmprss produces archives the tar CLI can
+# read, and vice versa. Pipelines are invoked without a subcommand so
+# --progress isn't accepted; the archive is written to a file, not stdout,
+# which is fine for tests.
+test_tar_pipeline() {
+  local ext="$1"
+  local tar_flag="$2"
+  tmpdir
+  echo "Testing $ext pipeline in $PWD"
+  echo "Creating random data"
+  random_dir 10 indir
+  echo "Creating $ext archives with each tool"
+  tar "$tar_flag" -cf tar_archive."$ext" indir
+  cmprss indir cmprss_archive."$ext"
+  echo "Extracting each archive with the opposite tool"
+  mkdir -p tar_from_cmprss
+  tar "$tar_flag" -xf cmprss_archive."$ext" -C tar_from_cmprss
+  mkdir -p cmprss_from_tar
+  cmprss --extract tar_archive."$ext" cmprss_from_tar
+  echo "Comparing the extracted contents"
+  compare indir tar_from_cmprss/indir
+  compare indir cmprss_from_tar/indir
+  echo "No errors detected"
+}
+
+test_tar_gz() { test_tar_pipeline tar.gz -z; }
+test_tar_xz() { test_tar_pipeline tar.xz -J; }
+test_tar_bz2() { test_tar_pipeline tar.bz2 -j; }
+test_tar_zst() { test_tar_pipeline tar.zst --zstd; }
+
 # Run all the tests if no arguments are given
 if [ $# -eq 0 ]; then
-  set -- gzip xz bzip2 zstd lz4
+  set -- gzip xz bzip2 zstd lz4 lzma brotli tar zip tar_gz tar_xz tar_bz2 tar_zst
 fi
 
 # Run the tests given on the command line

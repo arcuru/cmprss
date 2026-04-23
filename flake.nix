@@ -283,11 +283,14 @@
             diffutils
 
             # Official tools
+            brotli
             bzip2
             gnutar
             gzip
             lz4
+            unzip
             xz
+            zip
             zstd
           ];
 
