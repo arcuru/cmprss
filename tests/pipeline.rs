@@ -141,17 +141,19 @@ fn test_tar_gz_extract() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Full roundtrip: directory -> tar.xz -> directory
-#[test]
-fn test_tar_xz_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+/// Full roundtrip for a `tar.<codec>` compound extension using cmprss alone.
+/// Verifies that the extension resolver, compress pipeline, and extract
+/// pipeline agree for the given compound format.
+fn tar_pipeline_roundtrip(ext: &str) -> Result<(), Box<dyn std::error::Error>> {
     let temp_dir = TempDir::new()?;
 
     let source_dir = temp_dir.child("source");
     source_dir.create_dir_all()?;
     let test_file = source_dir.child("data.txt");
-    test_file.write_str("tar.xz roundtrip content")?;
+    let content = format!("{ext} roundtrip content");
+    test_file.write_str(&content)?;
 
-    let archive = temp_dir.child("archive.tar.xz");
+    let archive = temp_dir.child(format!("archive.{ext}"));
     Command::cargo_bin("cmprss")?
         .arg("--compress")
         .arg(source_dir.path())
@@ -170,9 +172,44 @@ fn test_tar_xz_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
 
     let extracted_file = extract_dir.child("source").child("data.txt");
     extracted_file.assert(predicate::path::exists());
-    extracted_file.assert(predicate::str::contains("tar.xz roundtrip content"));
+    extracted_file.assert(predicate::str::contains(content));
 
     Ok(())
+}
+
+#[test]
+fn test_tar_xz_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+    tar_pipeline_roundtrip("tar.xz")
+}
+
+#[test]
+fn test_tar_bz2_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+    tar_pipeline_roundtrip("tar.bz2")
+}
+
+#[test]
+fn test_tar_zst_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+    tar_pipeline_roundtrip("tar.zst")
+}
+
+#[test]
+fn test_tar_lzma_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+    tar_pipeline_roundtrip("tar.lzma")
+}
+
+#[test]
+fn test_tar_br_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+    tar_pipeline_roundtrip("tar.br")
+}
+
+#[test]
+fn test_tar_lz4_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+    tar_pipeline_roundtrip("tar.lz4")
+}
+
+#[test]
+fn test_tar_sz_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+    tar_pipeline_roundtrip("tar.sz")
 }
 
 // Test pipeline extraction using tar.gz with explicit compress then auto-detect extract
