@@ -54,6 +54,7 @@ impl Zip {
         FileOptions::<()>::default()
             .compression_method(CompressionMethod::Deflated)
             .compression_level(Some(self.compression_level as i64))
+            .large_file(true)
     }
 
     fn extract_seekable<R: std::io::Read + Seek>(
