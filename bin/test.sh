@@ -282,6 +282,32 @@ test_brotli() {
   test_brotli_level 11
 }
 
+# Test framed snappy interop against the snzip CLI. snzip's default format is
+# `framing2`, which is the same official framing format the `snap` crate uses
+# (and that cmprss writes with the `.sz` extension). Snappy has no compression
+# level, so no --level is passed.
+test_snappy() {
+  tmpdir
+  echo "Testing snappy in $PWD"
+  echo "Creating random data"
+  random_file 1000000 file
+  echo "Compressing with snzip and cmprss"
+  snzip -c file >snzip_file.sz
+  cmprss snappy file cmprss_file.sz --progress=off
+  compare_size snzip_file.sz cmprss_file.sz
+  echo "Decompressing"
+  snzip -d -c snzip_file.sz >snzip_snzip
+  snzip -d -c cmprss_file.sz >cmprss_snzip
+  cmprss snappy --extract cmprss_file.sz cmprss_cmprss --progress=off
+  cmprss snappy --extract snzip_file.sz snzip_cmprss --progress=off
+  echo "Comparing the decompressed files"
+  compare file snzip_snzip
+  compare file cmprss_snzip
+  compare file cmprss_cmprss
+  compare file snzip_cmprss
+  echo "No errors detected"
+}
+
 # Test tar archive interop with the tar CLI. Tar has no progress bar, so no
 # --progress flag is passed.
 test_tar() {
@@ -324,25 +350,26 @@ test_zip() {
   echo "No errors detected"
 }
 
-# Shared helper for tar.<codec> pipeline interop. Takes the compound extension
-# (tar.gz/tar.xz/tar.zst/tar.bz2) and the corresponding tar short flag
-# (-z/-J/--zstd/-j). Verifies that cmprss produces archives the tar CLI can
-# read, and vice versa. Pipelines are invoked without a subcommand so
-# --progress isn't accepted; the archive is written to a file, not stdout,
-# which is fine for tests.
+# Shared helper for tar.<codec> pipeline interop. The first arg is the compound
+# extension; the rest are the tar flags used to compress/extract that codec
+# (e.g. `-z`, `--zstd`, or `-I lzma` for codecs without a short flag).
+# Verifies that cmprss produces archives the tar CLI can read, and vice versa.
+# Pipelines are invoked without a subcommand so --progress isn't accepted; the
+# archive is written to a file, not stdout, which is fine for tests.
 test_tar_pipeline() {
   local ext="$1"
-  local tar_flag="$2"
+  shift
+  local tar_flags=("$@")
   tmpdir
   echo "Testing $ext pipeline in $PWD"
   echo "Creating random data"
   random_dir 10 indir
   echo "Creating $ext archives with each tool"
-  tar "$tar_flag" -cf tar_archive."$ext" indir
+  tar "${tar_flags[@]}" -cf tar_archive."$ext" indir
   cmprss indir cmprss_archive."$ext"
   echo "Extracting each archive with the opposite tool"
   mkdir -p tar_from_cmprss
-  tar "$tar_flag" -xf cmprss_archive."$ext" -C tar_from_cmprss
+  tar "${tar_flags[@]}" -xf cmprss_archive."$ext" -C tar_from_cmprss
   mkdir -p cmprss_from_tar
   cmprss --extract tar_archive."$ext" cmprss_from_tar
   echo "Comparing the extracted contents"
@@ -355,10 +382,16 @@ test_tar_gz() { test_tar_pipeline tar.gz -z; }
 test_tar_xz() { test_tar_pipeline tar.xz -J; }
 test_tar_bz2() { test_tar_pipeline tar.bz2 -j; }
 test_tar_zst() { test_tar_pipeline tar.zst --zstd; }
+# tar has no short flag for these codecs; drive the external CLI via -I.
+test_tar_lzma() { test_tar_pipeline tar.lzma -I lzma; }
+test_tar_br() { test_tar_pipeline tar.br -I brotli; }
+test_tar_lz4() { test_tar_pipeline tar.lz4 -I lz4; }
+test_tar_sz() { test_tar_pipeline tar.sz -I snzip; }
 
 # Run all the tests if no arguments are given
 if [ $# -eq 0 ]; then
-  set -- gzip xz bzip2 zstd lz4 lzma brotli tar zip tar_gz tar_xz tar_bz2 tar_zst
+  set -- gzip xz bzip2 zstd lz4 lzma brotli snappy tar zip \
+    tar_gz tar_xz tar_bz2 tar_zst tar_lzma tar_br tar_lz4 tar_sz
 fi
 
 # Run the tests given on the command line

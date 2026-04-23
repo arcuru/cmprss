@@ -288,6 +288,7 @@
             gnutar
             gzip
             lz4
+            snzip
             unzip
             xz
             zip
