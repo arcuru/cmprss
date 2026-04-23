@@ -1,6 +1,7 @@
 pub mod backends;
 mod job;
 pub mod progress;
+#[cfg(test)]
 pub mod test_utils;
 pub mod utils;
 
