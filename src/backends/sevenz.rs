@@ -111,10 +111,6 @@ impl Compressor for SevenZ {
         "7z"
     }
 
-    fn clone_boxed(&self) -> Box<dyn Compressor> {
-        Box::new(self.clone())
-    }
-
     fn default_extracted_target(&self) -> ExtractedTarget {
         ExtractedTarget::Directory
     }

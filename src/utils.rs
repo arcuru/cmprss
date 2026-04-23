@@ -172,16 +172,28 @@ impl LevelArgs {
     }
 }
 
+/// Produce an owned copy of a `Compressor` behind `Box<dyn Compressor>`,
+/// preserving all configuration (compression level, progress args, pipeline
+/// chain, etc). `Pipeline` uses this to hand owned instances to worker threads
+/// without losing user-supplied settings.
+///
+/// Implementors don't write this manually — the blanket impl below covers any
+/// `Compressor + Clone + 'static`. `Clone` itself can't be a supertrait of
+/// `Compressor` because it would break object safety for `Box<dyn Compressor>`.
+pub trait CompressorClone {
+    fn clone_boxed(&self) -> Box<dyn Compressor>;
+}
+
+impl<T: Compressor + Clone + 'static> CompressorClone for T {
+    fn clone_boxed(&self) -> Box<dyn Compressor> {
+        Box::new(self.clone())
+    }
+}
+
 /// Common interface for all compressor implementations
-pub trait Compressor: Send + Sync {
+pub trait Compressor: CompressorClone + Send + Sync {
     /// Name of this Compressor
     fn name(&self) -> &str;
-
-    /// Produce an owned copy of this compressor, preserving all configuration
-    /// (compression level, progress args, pipeline chain, etc). `Pipeline`
-    /// uses this to hand owned instances to worker threads without losing
-    /// user-supplied settings.
-    fn clone_boxed(&self) -> Box<dyn Compressor>;
 
     /// Default extension for this Compressor
     fn extension(&self) -> &str {
@@ -326,10 +338,6 @@ mod tests {
             "test"
         }
 
-        fn clone_boxed(&self) -> Box<dyn Compressor> {
-            Box::new(self.clone())
-        }
-
         // We'll use the default implementation for extension() and other methods
 
         fn compress(&self, _: CmprssInput, _: CmprssOutput) -> Result {
@@ -352,10 +360,6 @@ mod tests {
 
         fn extension(&self) -> &str {
             "cst"
-        }
-
-        fn clone_boxed(&self) -> Box<dyn Compressor> {
-            Box::new(self.clone())
         }
 
         fn compress(&self, _: CmprssInput, _: CmprssOutput) -> Result {

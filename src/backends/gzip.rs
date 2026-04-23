@@ -56,10 +56,6 @@ impl Compressor for Gzip {
         "gzip"
     }
 
-    fn clone_boxed(&self) -> Box<dyn Compressor> {
-        Box::new(self.clone())
-    }
-
     /// Compress an input file or pipe to a gzip archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "Gzip")?;

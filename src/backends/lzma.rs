@@ -92,10 +92,6 @@ impl Compressor for Lzma {
         "lzma"
     }
 
-    fn clone_boxed(&self) -> Box<dyn Compressor> {
-        Box::new(self.clone())
-    }
-
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "LZMA")?;
         let (input_stream, file_size) = open_input(input, "LZMA")?;

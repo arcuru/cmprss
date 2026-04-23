@@ -41,10 +41,6 @@ impl Compressor for Tar {
         "tar"
     }
 
-    fn clone_boxed(&self) -> Box<dyn Compressor> {
-        Box::new(self.clone())
-    }
-
     /// Tar extracts to a directory by default
     fn default_extracted_target(&self) -> ExtractedTarget {
         ExtractedTarget::Directory

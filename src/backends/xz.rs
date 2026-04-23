@@ -58,10 +58,6 @@ impl Compressor for Xz {
         "xz"
     }
 
-    fn clone_boxed(&self) -> Box<dyn Compressor> {
-        Box::new(self.clone())
-    }
-
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "Xz")?;
         let (input_stream, file_size) = open_input(input, "Xz")?;

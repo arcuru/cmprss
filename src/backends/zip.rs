@@ -120,10 +120,6 @@ impl Compressor for Zip {
         "zip"
     }
 
-    fn clone_boxed(&self) -> Box<dyn Compressor> {
-        Box::new(self.clone())
-    }
-
     /// Zip extracts to a directory by default
     fn default_extracted_target(&self) -> ExtractedTarget {
         ExtractedTarget::Directory

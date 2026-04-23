@@ -37,10 +37,6 @@ impl Compressor for Lz4 {
         "lz4"
     }
 
-    fn clone_boxed(&self) -> Box<dyn Compressor> {
-        Box::new(self.clone())
-    }
-
     /// Compress an input file or pipe to a lz4 archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "LZ4")?;

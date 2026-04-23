@@ -13,6 +13,14 @@ pub struct Pipeline {
     compressors: Vec<Box<dyn Compressor>>,
 }
 
+impl Clone for Pipeline {
+    fn clone(&self) -> Self {
+        Pipeline {
+            compressors: self.compressors.iter().map(|c| c.clone_boxed()).collect(),
+        }
+    }
+}
+
 /// Which method intermediate (threaded) stages should invoke. The final stage
 /// always runs on the calling thread and is handled by a caller-supplied
 /// closure — only the intermediate layers need this dispatch.
@@ -193,12 +201,6 @@ impl Compressor for Pipeline {
             .last()
             .expect("pipeline is never empty")
             .name()
-    }
-
-    fn clone_boxed(&self) -> Box<dyn Compressor> {
-        Box::new(Pipeline {
-            compressors: self.compressors.iter().map(|c| c.clone_boxed()).collect(),
-        })
     }
 
     fn extension(&self) -> &str {
