@@ -111,11 +111,13 @@ pub fn create_progress_bar(
     }
 }
 
-/// A reader that tracks progress of bytes read
+/// A reader that tracks progress of bytes read. Multiple readers may share
+/// the same `ProgressBar` clone to drive a single bar across several input
+/// streams (container formats iterate over many files); the bar is advanced
+/// via `inc`, which is atomic and relative.
 pub struct ProgressReader<R> {
     inner: R,
     bar: Option<ProgressBar>,
-    total_read: u64,
     last_update: Instant,
     bytes_since_update: u64,
     bytes_per_update: u64,
@@ -126,7 +128,6 @@ impl<R: Read> ProgressReader<R> {
         ProgressReader {
             inner,
             bar,
-            total_read: 0,
             last_update: Instant::now(),
             bytes_since_update: 0,
             bytes_per_update: 8192, // Start with 8KB, will adjust dynamically
@@ -144,8 +145,7 @@ impl<R: Read> ProgressReader<R> {
                 let now = Instant::now();
                 let elapsed = now.duration_since(self.last_update);
 
-                // Update the progress
-                bar.set_position(self.total_read);
+                bar.inc(self.bytes_since_update);
 
                 // Adjust bytes_per_update to target ~100ms between updates
                 if elapsed < Duration::from_millis(50) {
@@ -161,11 +161,21 @@ impl<R: Read> ProgressReader<R> {
     }
 }
 
+impl<R> Drop for ProgressReader<R> {
+    fn drop(&mut self) {
+        if let Some(ref bar) = self.bar
+            && self.bytes_since_update > 0
+        {
+            bar.inc(self.bytes_since_update);
+            self.bytes_since_update = 0;
+        }
+    }
+}
+
 impl<R: Read> Read for ProgressReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let bytes_read = self.inner.read(buf)?;
         if bytes_read > 0 {
-            self.total_read += bytes_read as u64;
             self.maybe_update_progress(bytes_read as u64);
         }
         Ok(bytes_read)
