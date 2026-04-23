@@ -8,8 +8,7 @@ use anyhow::bail;
 use clap::Args;
 use indicatif::ProgressBar;
 use sevenz_rust2::{
-    ArchiveEntry, ArchiveReader, ArchiveWriter, Password, decompress, decompress_file,
-    encoder_options::Lzma2Options,
+    ArchiveEntry, ArchiveReader, ArchiveWriter, Password, decompress, encoder_options::Lzma2Options,
 };
 use std::fs::File;
 use std::io::{self, Empty, Seek, SeekFrom, Write};
@@ -49,6 +48,23 @@ impl SevenZ {
             compression_level: args.level_args.resolve(&DefaultCompressionValidator),
             progress_args: args.progress_args,
         }
+    }
+
+    /// Extract a seekable 7z input with a byte-level progress bar keyed to
+    /// the compressed archive size.
+    fn decompress_seekable<R: io::Read + Seek>(
+        &self,
+        reader: R,
+        size: u64,
+        out_dir: &Path,
+    ) -> Result {
+        let bar = create_progress_bar(Some(size), self.progress_args.progress, OutputTarget::File);
+        let reader = ProgressReader::new(reader, bar.clone());
+        decompress(reader, out_dir)?;
+        if let Some(b) = bar {
+            b.finish();
+        }
+        Ok(())
     }
 
     /// Compress to the given seekable writer, walking path inputs ourselves
@@ -150,15 +166,16 @@ impl Compressor for SevenZ {
                         if paths.len() != 1 {
                             bail!("7z extraction expects exactly one archive file");
                         }
-                        decompress_file(&paths[0], out_dir)?;
-                        Ok(())
+                        let file = File::open(&paths[0])?;
+                        let size = file.metadata()?.len();
+                        self.decompress_seekable(file, size, out_dir)
                     }
                     CmprssInput::Pipe(mut pipe) => {
                         let mut temp_file = tempfile()?;
                         io::copy(&mut pipe, &mut temp_file)?;
                         temp_file.seek(SeekFrom::Start(0))?;
-                        decompress(temp_file, out_dir)?;
-                        Ok(())
+                        let size = temp_file.metadata()?.len();
+                        self.decompress_seekable(temp_file, size, out_dir)
                     }
                     CmprssInput::Reader(_) => {
                         bail!(
