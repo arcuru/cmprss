@@ -17,15 +17,6 @@ impl Pipeline {
         Pipeline { compressors }
     }
 
-    /// Create a new Pipeline from compressor type names
-    pub fn from_names(compressor_names: &[String]) -> Result<Self> {
-        let compressors = compressor_names
-            .iter()
-            .map(|name| Self::create_compressor(name))
-            .collect::<Result<Vec<_>>>()?;
-        Ok(Self { compressors })
-    }
-
     /// Get a string representation of the chained format (e.g., "tar.gz")
     fn format_chain(&self) -> String {
         self.compressors

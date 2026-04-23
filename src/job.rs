@@ -375,29 +375,27 @@ pub fn get_compressor_from_filename(filename: &Path) -> Option<Box<dyn Compresso
     // e.g., "a.b.tar.gz" → gz ✓, tar ✓, b ✗ stop → [gz, tar]
     // `chain_from_ext` handles both single-codec extensions and compound
     // shortcuts like `tgz` (which expand to `[tar, gz]`).
-    let mut compressor_names: Vec<String> = Vec::new();
+    let mut chain: Vec<Box<dyn Compressor>> = Vec::new();
     for ext in parts[1..].iter().rev() {
         match backends::chain_from_ext(ext) {
-            Some(chain) => {
-                // chain is innermost→outermost; we walk the filename
+            Some(stage) => {
+                // stage is innermost→outermost; we walk the filename
                 // right-to-left so we push outermost first.
-                for c in chain.iter().rev() {
-                    compressor_names.push(c.name().to_string());
+                for c in stage.into_iter().rev() {
+                    chain.push(c);
                 }
             }
             None => break,
         }
     }
 
-    if compressor_names.is_empty() {
+    if chain.is_empty() {
         return None;
     }
 
     // Reverse to innermost-to-outermost order
-    compressor_names.reverse();
-    Pipeline::from_names(&compressor_names)
-        .ok()
-        .map(|m| Box::new(m) as Box<dyn Compressor>)
+    chain.reverse();
+    Some(Box::new(Pipeline::new(chain)))
 }
 
 /// Convert an input path into a Path
