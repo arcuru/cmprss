@@ -14,12 +14,12 @@ use crate::backends::{self, Pipeline};
 use crate::utils::{CmprssInput, CmprssOutput, CommonArgs, Compressor, Result};
 
 /// Extract an action hint from the CLI flags. Returns `None` when the user
-/// hasn't specified `--compress`/`--extract`/`--decompress`, in which case
-/// the action will be inferred from filenames downstream.
+/// hasn't specified `--compress`/`--extract`, in which case the action will
+/// be inferred from filenames downstream.
 fn action_from_flags(args: &CommonArgs) -> Option<Action> {
     if args.compress {
         Some(Action::Compress)
-    } else if args.extract || args.decompress {
+    } else if args.extract {
         Some(Action::Extract)
     } else {
         None
