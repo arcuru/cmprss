@@ -131,6 +131,16 @@ The common compound shortcut extensions also work and behave identically to thei
 | `.txz`         | `.tar.xz`     |
 | `.tzst`        | `.tar.zst`    |
 
+You can also pass a compound format as the leading argument (like the `tar` subcommand) to make it explicit, without writing out a target filename:
+
+```bash
+# Compress a directory to directory.tar.gz
+cmprss tar.gz directory
+
+# Same, using the shortcut form
+cmprss tgz directory out.tgz
+```
+
 Pipes can still be used if preferred:
 
 ```bash

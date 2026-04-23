@@ -78,6 +78,21 @@ enum Format {
     Manpage,
 }
 
+/// If the first positional arg looks like a dotted format string (e.g.
+/// `tar.gz`, `tgz`) and isn't an existing path on disk, remove it from
+/// `io_list` and return the equivalent compressor chain. This gives the
+/// compound formats the same ergonomic treatment as the `tar` subcommand
+/// without cluttering `--help` with every permutation.
+fn take_format_prefix(io_list: &mut Vec<String>) -> Option<Box<dyn Compressor>> {
+    let first = io_list.first()?;
+    if std::path::Path::new(first).exists() {
+        return None;
+    }
+    let chain = chain_from_format_str(first)?;
+    io_list.remove(0);
+    Some(Box::new(Pipeline::new(chain)))
+}
+
 fn write_completions(shell: Shell) -> Result {
     let mut cmd = CmprssArgs::command();
     clap_complete::generate(shell, &mut cmd, "cmprss", &mut std::io::stdout());
@@ -115,7 +130,11 @@ fn main() {
         Some(Format::SevenZ(a)) => command(Some(Box::new(SevenZ::new(&a))), &a.common_args),
         Some(Format::Completions { shell }) => write_completions(shell),
         Some(Format::Manpage) => write_manpage(),
-        None => command(None, &args.base_args),
+        None => {
+            let mut base_args = args.base_args;
+            let compressor = take_format_prefix(&mut base_args.io_list);
+            command(compressor, &base_args)
+        }
     }
     .unwrap_or_else(|e| {
         eprintln!("ERROR(cmprss): {}", e);

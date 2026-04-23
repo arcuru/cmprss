@@ -63,3 +63,15 @@ pub fn chain_from_ext(ext: &str) -> Option<Vec<Box<dyn Compressor>>> {
         _ => compressor_from_str(ext).map(|c| vec![c]),
     }
 }
+
+/// Resolve a dotted format string (e.g. `tar.gz`, `tgz`, `xz`) into a
+/// compressor chain. Every dot-separated segment is resolved via
+/// `chain_from_ext` and concatenated in order. Returns `None` if any
+/// segment isn't a known codec or shortcut.
+pub fn chain_from_format_str(s: &str) -> Option<Vec<Box<dyn Compressor>>> {
+    let mut chain = Vec::new();
+    for part in s.split('.') {
+        chain.extend(chain_from_ext(part)?);
+    }
+    if chain.is_empty() { None } else { Some(chain) }
+}
