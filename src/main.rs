@@ -61,6 +61,10 @@ enum Format {
     /// lzma (legacy LZMA1) compression
     Lzma(LzmaArgs),
 
+    /// 7-Zip archive format
+    #[clap(name = "7z", visible_alias = "sevenz")]
+    SevenZ(SevenZArgs),
+
     /// Print a shell completion script to stdout.
     #[clap(hide = true)]
     Completions {
@@ -108,6 +112,7 @@ fn main() {
         Some(Format::Brotli(a)) => command(Some(Box::new(Brotli::new(&a))), &a.common_args),
         Some(Format::Snappy(a)) => command(Some(Box::new(Snappy::new(&a))), &a.common_args),
         Some(Format::Lzma(a)) => command(Some(Box::new(Lzma::new(&a))), &a.common_args),
+        Some(Format::SevenZ(a)) => command(Some(Box::new(SevenZ::new(&a))), &a.common_args),
         Some(Format::Completions { shell }) => write_completions(shell),
         Some(Format::Manpage) => write_manpage(),
         None => command(None, &args.base_args),

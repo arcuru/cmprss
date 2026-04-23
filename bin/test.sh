@@ -350,6 +350,27 @@ test_zip() {
   echo "No errors detected"
 }
 
+# Test 7z archive interop with the 7z CLI (from p7zip). 7z has no --progress
+# flag, so it isn't passed here. -bso0/-bsp0 silence 7z's output/progress noise.
+test_7z() {
+  tmpdir
+  echo "Testing 7z in $PWD"
+  echo "Creating random data"
+  random_dir 10 indir
+  echo "Creating 7z archives with each tool"
+  7z a -bso0 -bsp0 sevenz_archive.7z indir
+  cmprss 7z indir cmprss_archive.7z
+  echo "Extracting each archive with the opposite tool"
+  mkdir -p sevenz_from_cmprss
+  7z x -bso0 -bsp0 "-osevenz_from_cmprss" cmprss_archive.7z
+  mkdir -p cmprss_from_sevenz
+  cmprss 7z --extract sevenz_archive.7z cmprss_from_sevenz
+  echo "Comparing the extracted contents"
+  compare indir sevenz_from_cmprss/indir
+  compare indir cmprss_from_sevenz/indir
+  echo "No errors detected"
+}
+
 # Shared helper for tar.<codec> pipeline interop. The first arg is the compound
 # extension; the rest are the tar flags used to compress/extract that codec
 # (e.g. `-z`, `--zstd`, or `-I lzma` for codecs without a short flag).
@@ -390,7 +411,7 @@ test_tar_sz() { test_tar_pipeline tar.sz -I snzip; }
 
 # Run all the tests if no arguments are given
 if [ $# -eq 0 ]; then
-  set -- gzip xz bzip2 zstd lz4 lzma brotli snappy tar zip \
+  set -- gzip xz bzip2 zstd lz4 lzma brotli snappy tar zip 7z \
     tar_gz tar_xz tar_bz2 tar_zst tar_lzma tar_br tar_lz4 tar_sz
 fi
 
