@@ -1,4 +1,7 @@
-use crate::utils::{CmprssInput, CmprssOutput, CommonArgs, Compressor, ExtractedTarget, Result};
+use crate::utils::{
+    CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
+    DefaultCompressionValidator, ExtractedTarget, LevelArgs, Result,
+};
 use anyhow::bail;
 use clap::Args;
 use std::fs::File;
@@ -13,19 +16,40 @@ use zip::{CompressionMethod, ZipWriter};
 pub struct ZipArgs {
     #[clap(flatten)]
     pub common_args: CommonArgs,
+
+    #[clap(flatten)]
+    pub level_args: LevelArgs,
 }
 
-#[derive(Default, Clone)]
-pub struct Zip {}
+#[derive(Clone)]
+pub struct Zip {
+    pub compression_level: i32,
+}
+
+impl Default for Zip {
+    fn default() -> Self {
+        Zip {
+            compression_level: DefaultCompressionValidator.default_level(),
+        }
+    }
+}
 
 impl Zip {
-    pub fn new(_args: &ZipArgs) -> Zip {
-        Zip {}
+    pub fn new(args: &ZipArgs) -> Zip {
+        Zip {
+            compression_level: args.level_args.resolve(&DefaultCompressionValidator),
+        }
+    }
+
+    fn file_options(&self) -> FileOptions<'static, ()> {
+        FileOptions::<()>::default()
+            .compression_method(CompressionMethod::Deflated)
+            .compression_level(Some(self.compression_level as i64))
     }
 
     fn compress_to_file<W: Write + Seek>(&self, input: CmprssInput, writer: W) -> Result {
         let mut zip_writer = ZipWriter::new(writer);
-        let options = FileOptions::<()>::default().compression_method(CompressionMethod::Deflated);
+        let options = self.file_options();
 
         match input {
             CmprssInput::Path(paths) => {
@@ -38,7 +62,7 @@ impl Zip {
                     } else if path.is_dir() {
                         // Use the directory as the base and add its contents
                         let base = path.parent().unwrap_or(&path);
-                        add_directory(&mut zip_writer, base, &path)?;
+                        add_directory(&mut zip_writer, base, &path, options)?;
                     } else {
                         bail!("zip does not support this file type");
                     }
@@ -201,7 +225,12 @@ impl Compressor for Zip {
     }
 }
 
-fn add_directory<W: Write + Seek>(zip: &mut ZipWriter<W>, base: &Path, path: &Path) -> Result {
+fn add_directory<W: Write + Seek>(
+    zip: &mut ZipWriter<W>,
+    base: &Path,
+    path: &Path,
+    options: FileOptions<'static, ()>,
+) -> Result {
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
         let entry_path = entry.path();
@@ -212,19 +241,14 @@ fn add_directory<W: Write + Seek>(zip: &mut ZipWriter<W>, base: &Path, path: &Pa
             .to_string_lossy()
             .replace('\\', "/");
         if entry_path.is_file() {
-            let options =
-                FileOptions::<()>::default().compression_method(CompressionMethod::Deflated);
             zip.start_file(name, options)?;
             let mut f = File::open(&entry_path)?;
             io::copy(&mut f, zip)?;
         } else if entry_path.is_dir() {
             // Ensure directory entry ends with '/'
             let dir_name = name.clone() + "/";
-            zip.add_directory(
-                dir_name,
-                FileOptions::<()>::default().compression_method(CompressionMethod::Deflated),
-            )?;
-            add_directory(zip, base, &entry_path)?;
+            zip.add_directory(dir_name, options)?;
+            add_directory(zip, base, &entry_path, options)?;
         }
     }
     Ok(())
@@ -250,6 +274,24 @@ mod tests {
     fn test_zip_default_compression() -> Result {
         let compressor = Zip::default();
         test_compression(&compressor)
+    }
+
+    /// Test fast compression level
+    #[test]
+    fn test_zip_fast_compression() -> Result {
+        let fast_compressor = Zip {
+            compression_level: 1,
+        };
+        test_compression(&fast_compressor)
+    }
+
+    /// Test best compression level
+    #[test]
+    fn test_zip_best_compression() -> Result {
+        let best_compressor = Zip {
+            compression_level: 9,
+        };
+        test_compression(&best_compressor)
     }
 
     /// Test zip-specific functionality: directory handling
