@@ -1,16 +1,19 @@
+use super::containers::total_input_bytes;
+use crate::progress::{OutputTarget, ProgressArgs, ProgressReader, create_progress_bar};
 use crate::utils::{
     CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
     DefaultCompressionValidator, ExtractedTarget, LevelArgs, Result,
 };
 use anyhow::bail;
 use clap::Args;
+use indicatif::ProgressBar;
 use sevenz_rust2::{
     ArchiveEntry, ArchiveReader, ArchiveWriter, Password, decompress, decompress_file,
     encoder_options::Lzma2Options,
 };
 use std::fs::File;
-use std::io::{self, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
+use std::io::{self, Empty, Seek, SeekFrom, Write};
+use std::path::Path;
 use tempfile::tempfile;
 
 #[derive(Args, Debug)]
@@ -20,17 +23,22 @@ pub struct SevenZArgs {
 
     #[clap(flatten)]
     pub level_args: LevelArgs,
+
+    #[clap(flatten)]
+    pub progress_args: ProgressArgs,
 }
 
 #[derive(Clone)]
 pub struct SevenZ {
     pub compression_level: i32,
+    pub progress_args: ProgressArgs,
 }
 
 impl Default for SevenZ {
     fn default() -> Self {
         SevenZ {
             compression_level: DefaultCompressionValidator.default_level(),
+            progress_args: ProgressArgs::default(),
         }
     }
 }
@@ -39,10 +47,18 @@ impl SevenZ {
     pub fn new(args: &SevenZArgs) -> SevenZ {
         SevenZ {
             compression_level: args.level_args.resolve(&DefaultCompressionValidator),
+            progress_args: args.progress_args,
         }
     }
 
-    fn compress_to_file<W: Write + Seek>(&self, input: CmprssInput, writer: W) -> Result {
+    /// Compress to the given seekable writer, walking path inputs ourselves
+    /// so each file's read goes through `ProgressReader` sharing `bar`.
+    fn compress_to_file<W: Write + Seek>(
+        &self,
+        input: CmprssInput,
+        writer: W,
+        bar: Option<&ProgressBar>,
+    ) -> Result {
         let mut aw = ArchiveWriter::new(writer)?;
         let lzma = Lzma2Options::from_level(self.compression_level as u32);
         aw.set_content_methods(vec![lzma.into()]);
@@ -50,10 +66,11 @@ impl SevenZ {
         match input {
             CmprssInput::Path(paths) => {
                 for path in paths {
+                    let name = path.file_name().unwrap().to_string_lossy().to_string();
                     if path.is_file() {
-                        aw.push_source_path(&path, |_| true)?;
+                        push_file_entry(&mut aw, &name, &path, bar)?;
                     } else if path.is_dir() {
-                        add_directory_entries(&mut aw, &path)?;
+                        push_dir_entries(&mut aw, &name, &path, bar)?;
                     } else {
                         bail!("7z does not support this file type");
                     }
@@ -89,19 +106,29 @@ impl Compressor for SevenZ {
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         match output {
             CmprssOutput::Path(ref path) => {
+                let total = match &input {
+                    CmprssInput::Path(paths) => Some(total_input_bytes(paths)),
+                    _ => None,
+                };
+                let bar =
+                    create_progress_bar(total, self.progress_args.progress, OutputTarget::File);
                 let file = File::create(path)?;
-                self.compress_to_file(input, file)
+                self.compress_to_file(input, file, bar.as_ref())?;
+                if let Some(b) = bar {
+                    b.finish();
+                }
+                Ok(())
             }
             CmprssOutput::Pipe(mut pipe) => {
                 let mut temp_file = tempfile()?;
-                self.compress_to_file(input, &mut temp_file)?;
+                self.compress_to_file(input, &mut temp_file, None)?;
                 temp_file.seek(SeekFrom::Start(0))?;
                 io::copy(&mut temp_file, &mut pipe)?;
                 Ok(())
             }
             CmprssOutput::Writer(mut writer) => {
                 let mut temp_file = tempfile()?;
-                self.compress_to_file(input, &mut temp_file)?;
+                self.compress_to_file(input, &mut temp_file, None)?;
                 temp_file.seek(SeekFrom::Start(0))?;
                 io::copy(&mut temp_file, &mut writer)?;
                 Ok(())
@@ -198,23 +225,43 @@ impl Compressor for SevenZ {
     }
 }
 
-/// Archive the contents of `dir` under the directory's basename.
-///
-/// `push_source_path` strips the src prefix from each entry name, so to keep
-/// the directory itself as a prefix in the archive (e.g. `indir/file.txt`
-/// instead of `file.txt`), we pass the *parent* as the src and filter to just
-/// `dir`'s subtree.
-fn add_directory_entries<W: Write + Seek>(aw: &mut ArchiveWriter<W>, dir: &Path) -> Result {
-    let abs_dir = std::path::absolute(dir).unwrap_or_else(|_| dir.to_path_buf());
-    let base: PathBuf = abs_dir
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| abs_dir.clone());
-    let base_filter = base.clone();
-    let target = abs_dir.clone();
-    aw.push_source_path(&base, move |p| {
-        p == base_filter.as_path() || p.starts_with(&target)
-    })?;
+/// Push a single regular file as an archive entry, with reads flowing
+/// through `ProgressReader` so they tick the shared bar.
+fn push_file_entry<W: Write + Seek>(
+    aw: &mut ArchiveWriter<W>,
+    archive_name: &str,
+    disk_path: &Path,
+    bar: Option<&ProgressBar>,
+) -> Result {
+    let entry = ArchiveEntry::from_path(disk_path, archive_name.to_string());
+    let file = File::open(disk_path)?;
+    let reader = ProgressReader::new(file, bar.cloned());
+    aw.push_archive_entry(entry, Some(reader))?;
+    Ok(())
+}
+
+/// Push a directory entry, then recurse into its children. Mirrors the
+/// layout that `push_source_path` would produce (entries named
+/// `<dir>/<child>`), but gives us a read hook for each file.
+fn push_dir_entries<W: Write + Seek>(
+    aw: &mut ArchiveWriter<W>,
+    archive_name: &str,
+    disk_path: &Path,
+    bar: Option<&ProgressBar>,
+) -> Result {
+    let entry = ArchiveEntry::from_path(disk_path, archive_name.to_string());
+    aw.push_archive_entry::<Empty>(entry, None)?;
+    for child in std::fs::read_dir(disk_path)? {
+        let child = child?;
+        let child_path = child.path();
+        let child_name = format!("{}/{}", archive_name, child.file_name().to_string_lossy());
+        if child_path.is_file() {
+            push_file_entry(aw, &child_name, &child_path, bar)?;
+        } else if child_path.is_dir() {
+            push_dir_entries(aw, &child_name, &child_path, bar)?;
+        }
+        // Skip symlinks/other types — parity with prior behavior.
+    }
     Ok(())
 }
 
@@ -242,6 +289,7 @@ mod tests {
     fn test_sevenz_fast_compression() -> Result {
         let fast_compressor = SevenZ {
             compression_level: 1,
+            progress_args: ProgressArgs::default(),
         };
         test_compression(&fast_compressor)
     }
@@ -250,6 +298,7 @@ mod tests {
     fn test_sevenz_best_compression() -> Result {
         let best_compressor = SevenZ {
             compression_level: 9,
+            progress_args: ProgressArgs::default(),
         };
         test_compression(&best_compressor)
     }
