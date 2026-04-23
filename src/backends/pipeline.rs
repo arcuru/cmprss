@@ -11,12 +11,18 @@ use std::thread;
 pub struct Pipeline {
     // The chain of compressors to apply in order (innermost to outermost)
     compressors: Vec<Box<dyn Compressor>>,
+    /// Preserves the user's original format string (e.g. `tgz`) so default
+    /// filenames use it verbatim instead of the dotted composition of each
+    /// stage's extension. `None` falls back to joining the per-stage
+    /// extensions.
+    format_override: Option<String>,
 }
 
 impl Clone for Pipeline {
     fn clone(&self) -> Self {
         Pipeline {
             compressors: self.compressors.iter().map(|c| c.clone_boxed()).collect(),
+            format_override: self.format_override.clone(),
         }
     }
 }
@@ -33,11 +39,27 @@ enum StageAction {
 impl Pipeline {
     /// Create a new Pipeline with the given compressors
     pub fn new(compressors: Vec<Box<dyn Compressor>>) -> Self {
-        Pipeline { compressors }
+        Pipeline {
+            compressors,
+            format_override: None,
+        }
+    }
+
+    /// Create a Pipeline that keeps `format` as its canonical format string,
+    /// used for default output filenames. Intended for shortcut forms like
+    /// `tgz` where the user-facing extension differs from the dotted chain.
+    pub fn with_format(compressors: Vec<Box<dyn Compressor>>, format: String) -> Self {
+        Pipeline {
+            compressors,
+            format_override: Some(format),
+        }
     }
 
     /// Get a string representation of the chained format (e.g., "tar.gz")
     fn format_chain(&self) -> String {
+        if let Some(ref f) = self.format_override {
+            return f.clone();
+        }
         self.compressors
             .iter()
             .map(|c| c.extension())

@@ -89,8 +89,9 @@ fn take_format_prefix(io_list: &mut Vec<String>) -> Option<Box<dyn Compressor>> 
         return None;
     }
     let chain = chain_from_format_str(first)?;
+    let format = first.clone();
     io_list.remove(0);
-    Some(Box::new(Pipeline::new(chain)))
+    Some(Box::new(Pipeline::with_format(chain, format)))
 }
 
 fn write_completions(shell: Shell) -> Result {

@@ -113,6 +113,33 @@ fn format_prefix_roundtrip(
 mod format_prefix {
     use super::*;
 
+    /// When the user explicitly names a shortcut format like `tgz`, the
+    /// inferred output filename should keep that spelling instead of the
+    /// expanded `.tar.gz` form.
+    #[test]
+    fn shortcut_preserves_extension_in_default_name() -> Result<(), Box<dyn std::error::Error>> {
+        let working_dir = create_working_dir()?;
+        let src = working_dir.child("payload");
+        src.create_dir_all()?;
+        src.child("a.txt").write_str("hello")?;
+
+        let mut compress = Command::cargo_bin("cmprss")?;
+        compress
+            .current_dir(&working_dir)
+            .arg("--ignore-pipes")
+            .arg("tgz")
+            .arg("payload");
+        compress.assert().success();
+
+        working_dir
+            .child("payload.tgz")
+            .assert(predicate::path::is_file());
+        working_dir
+            .child("payload.tar.gz")
+            .assert(predicate::path::missing());
+        Ok(())
+    }
+
     #[test]
     fn tar_gz() -> Result<(), Box<dyn std::error::Error>> {
         format_prefix_roundtrip("tar.gz", "tar.gz")
