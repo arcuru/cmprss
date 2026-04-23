@@ -1,5 +1,4 @@
 use clap::Args;
-use std::ffi::OsStr;
 use std::fmt;
 use std::io;
 use std::io::{Read, Write};
@@ -208,15 +207,11 @@ pub trait Compressor: Send + Sync {
 
     /// Generate the default name for the compressed file
     fn default_compressed_filename(&self, in_path: &Path) -> String {
-        format!(
-            "{}.{}",
-            in_path
-                .file_name()
-                .unwrap_or_else(|| OsStr::new("archive"))
-                .to_str()
-                .unwrap(),
-            self.extension()
-        )
+        let name = in_path
+            .file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or("archive");
+        format!("{name}.{}", self.extension())
     }
 
     /// Generate the default extracted filename

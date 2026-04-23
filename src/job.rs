@@ -462,22 +462,32 @@ fn guess_from_filenames(
         (Some(c), Some(e)) => {
             // Both sides carry a known extension — decide whether this is
             // adding or stripping a single outer layer (e.g. tar → tar.gz).
-            let input_file = input.file_name().unwrap().to_str().unwrap();
-            let input_ext = input.extension().unwrap_or_default();
-            let output_file = output.file_name().unwrap().to_str().unwrap();
-            let output_ext = output.extension().unwrap_or_default();
-            let layer_added = input_file.to_string() + "." + output_ext.to_str().unwrap();
-            let layer_stripped = output_file.to_string() + "." + input_ext.to_str().unwrap();
+            let input_file = input
+                .file_name()
+                .and_then(|f| f.to_str())
+                .ok_or_else(|| anyhow!("Could not parse input filename"))?;
+            let input_ext = input
+                .extension()
+                .and_then(|e| e.to_str())
+                .ok_or_else(|| anyhow!("Could not parse input extension"))?;
+            let output_file = output
+                .file_name()
+                .and_then(|f| f.to_str())
+                .ok_or_else(|| anyhow!("Could not parse output filename"))?;
+            let output_ext = output
+                .extension()
+                .and_then(|e| e.to_str())
+                .ok_or_else(|| anyhow!("Could not parse output extension"))?;
+            let layer_added = format!("{input_file}.{output_ext}");
+            let layer_stripped = format!("{output_file}.{input_ext}");
 
             if layer_added == output_file {
                 // input="archive.tar", output="archive.tar.gz" — add the outer layer only.
-                let single =
-                    backends::compressor_from_str(output_ext.to_str().unwrap_or("")).unwrap_or(c);
+                let single = backends::compressor_from_str(output_ext).unwrap_or(c);
                 Ok((single, Action::Compress))
             } else if layer_stripped == input_file {
                 // input="archive.tar.gz", output="archive.tar" — strip the outer layer only.
-                let single =
-                    backends::compressor_from_str(input_ext.to_str().unwrap_or("")).unwrap_or(e);
+                let single = backends::compressor_from_str(input_ext).unwrap_or(e);
                 Ok((single, Action::Extract))
             } else if c.name() == e.name() {
                 // Same format on both sides: only meaningful when the output
