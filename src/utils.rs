@@ -66,7 +66,6 @@ pub struct CommonArgs {
 }
 
 /// Trait for validating compression levels for different compressors
-#[allow(dead_code)]
 pub trait CompressionLevelValidator {
     /// Get the minimum valid compression level
     fn min_level(&self) -> i32;
@@ -81,6 +80,7 @@ pub trait CompressionLevelValidator {
     fn name_to_level(&self, name: &str) -> Option<i32>;
 
     /// Validate if a compression level is within the valid range
+    #[cfg(test)]
     fn is_valid_level(&self, level: i32) -> bool {
         level >= self.min_level() && level <= self.max_level()
     }
@@ -174,7 +174,6 @@ impl LevelArgs {
 }
 
 /// Common interface for all compressor implementations
-#[allow(unused_variables)]
 pub trait Compressor: Send + Sync {
     /// Name of this Compressor
     fn name(&self) -> &str;

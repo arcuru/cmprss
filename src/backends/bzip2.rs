@@ -2,8 +2,8 @@ use super::stream::{guard_file_output, open_input, open_output};
 use crate::{
     progress::{ProgressArgs, copy_with_progress},
     utils::{
-        CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
-        ExtractedTarget, LevelArgs, Result,
+        CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor, LevelArgs,
+        Result,
     },
 };
 use bzip2::Compression;
@@ -80,11 +80,6 @@ impl Compressor for Bzip2 {
     /// Name of this compressor
     fn name(&self) -> &str {
         "bzip2"
-    }
-
-    /// Bzip2 extracts to a file by default
-    fn default_extracted_target(&self) -> ExtractedTarget {
-        ExtractedTarget::File
     }
 
     /// Compress an input file or pipe to a bz2 archive

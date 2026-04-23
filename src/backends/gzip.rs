@@ -2,7 +2,7 @@ use super::stream::{guard_file_output, open_input, open_output};
 use crate::progress::{ProgressArgs, copy_with_progress};
 use crate::utils::{
     CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
-    DefaultCompressionValidator, ExtractedTarget, LevelArgs, Result,
+    DefaultCompressionValidator, LevelArgs, Result,
 };
 use clap::Args;
 use flate2::write::GzEncoder;
@@ -54,11 +54,6 @@ impl Compressor for Gzip {
     /// Full name for gzip.
     fn name(&self) -> &str {
         "gzip"
-    }
-
-    /// Gzip extracts to a file by default
-    fn default_extracted_target(&self) -> ExtractedTarget {
-        ExtractedTarget::File
     }
 
     /// Compress an input file or pipe to a gzip archive
