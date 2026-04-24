@@ -112,6 +112,7 @@ fn command(compressor: Option<Box<dyn Compressor>>, args: &CommonArgs) -> Result
         Action::Compress => job.compressor.compress(job.input, job.output),
         Action::Extract => job.compressor.extract(job.input, job.output),
         Action::List => job.compressor.list(job.input),
+        Action::Append => job.compressor.append(job.input, job.output),
     }
 }
 

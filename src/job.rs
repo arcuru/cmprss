@@ -14,13 +14,15 @@ use crate::backends::{self, Pipeline};
 use crate::utils::{CmprssInput, CmprssOutput, CommonArgs, Compressor, Result};
 
 /// Extract an action hint from the CLI flags. Returns `None` when the user
-/// hasn't specified `--compress`/`--extract`, in which case the action will
-/// be inferred from filenames downstream.
+/// hasn't specified `--compress`/`--extract`/`--append`, in which case the
+/// action will be inferred from filenames downstream.
 fn action_from_flags(args: &CommonArgs) -> Option<Action> {
     if args.compress {
         Some(Action::Compress)
     } else if args.extract {
         Some(Action::Extract)
+    } else if args.append {
+        Some(Action::Append)
     } else {
         None
     }
@@ -77,8 +79,13 @@ fn partition_paths(
             // as another input.
             output = Some(path);
             io_list.pop();
+        } else if !path.is_dir() && action_hint == Some(Action::Append) {
+            // --append takes the trailing existing file as the archive to
+            // grow. Same positional convention as compress: the target is
+            // last, the new inputs are before it.
+            output = Some(path);
+            io_list.pop();
         }
-        // TODO: check for scenarios where we want to append to an existing archive.
     }
 
     for input in &io_list {
@@ -123,6 +130,9 @@ pub enum Action {
     /// container formats; stream codecs fall through to `Compressor::list`'s
     /// default bail.
     List,
+    /// Append new entries to an existing archive. Only supported by container
+    /// formats that can grow in place (tar, zip).
+    Append,
 }
 
 /// Parse the common args and determine the details of the job requested.
@@ -189,6 +199,9 @@ pub fn get_job(compressor: Option<Box<dyn Compressor>>, common_args: &CommonArgs
         Action::Extract => compressor.default_extracted_filename(get_input_filename(&input)?),
         // List short-circuits above; finalize_without_output never returns it.
         Action::List => unreachable!("List is handled before Branch 3"),
+        // Append without a target archive path has nothing to append to;
+        // `finalize_without_output` rejects it before reaching here.
+        Action::Append => unreachable!("Append requires an existing output path"),
     };
     Ok(Job {
         compressor,
@@ -234,6 +247,11 @@ fn finalize_without_output(
                 .ok_or_else(|| anyhow!("Could not determine compressor to use"))?;
             Ok((c, Action::Extract))
         }
+        // Append needs an existing archive path to grow; without one there's
+        // nothing to append to.
+        Some(Action::Append) => {
+            bail!("--append requires an existing archive as the output target")
+        }
         // List is handled by the short-circuit at the top of get_job and
         // never flows into this helper.
         Some(Action::List) => unreachable!("List is handled before Branch 3"),
@@ -273,6 +291,18 @@ fn fill_missing_from_io(
         }
         // List is handled by the short-circuit at the top of get_job.
         Some(Action::List) => unreachable!("List is handled before fill_missing_from_io"),
+        Some(Action::Append) => {
+            // Append needs an existing archive path to grow; infer the
+            // compressor from that path's extension when it wasn't given.
+            match output {
+                CmprssOutput::Path(path) => {
+                    if compressor.is_none() {
+                        *compressor = get_compressor_from_filename(path);
+                    }
+                }
+                _ => bail!("--append requires an archive path, not a pipe, as the target"),
+            }
+        }
         Some(Action::Extract) => {
             if let CmprssInput::Path(paths) = input {
                 if paths.len() != 1 {

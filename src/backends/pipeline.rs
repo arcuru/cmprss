@@ -1,7 +1,7 @@
 use crate::utils::{
     CmprssInput, CmprssOutput, Compressor, ExtractedTarget, ReadWrapper, Result, WriteWrapper,
 };
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use std::io::{self, Read, Write};
 use std::path::Path;
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -320,6 +320,19 @@ impl Compressor for Pipeline {
             };
             last.extract(input, final_output)
         })
+    }
+
+    fn append(&self, input: CmprssInput, output: CmprssOutput) -> Result {
+        debug_assert!(!self.compressors.is_empty(), "pipeline is never empty");
+        if self.compressors.len() == 1 {
+            // Single-stage pipelines are just a wrapper; delegate so tar/zip
+            // reached via positional-path inference still support --append.
+            return self.compressors[0].append(input, output);
+        }
+        bail!(
+            "cannot --append to a compound archive ({}); it would require decompressing and recompressing the whole archive",
+            self.format_chain()
+        )
     }
 
     fn list(&self, input: CmprssInput) -> Result {

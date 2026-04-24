@@ -34,6 +34,12 @@ pub struct CommonArgs {
     #[arg(short, long, visible_alias = "decompress")]
     pub extract: bool,
 
+    /// Append the input(s) to an existing archive.
+    /// Only supported by container formats that can grow in place (tar, zip);
+    /// stream codecs and mixed pipelines like `tar.gz` will error.
+    #[arg(short, long)]
+    pub append: bool,
+
     /// List of I/O.
     /// This consists of all the inputs followed by the single output, with intelligent fallback to stdin/stdout.
     #[arg()]
@@ -245,6 +251,20 @@ pub trait Compressor: CompressorClone + Send + Sync {
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result;
 
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result;
+
+    /// Append the input to an existing archive pointed at by `output`.
+    ///
+    /// The default implementation bails: only container formats that can grow
+    /// in place — currently tar and zip — support appending. Stream codecs
+    /// (gzip, xz, …) have no notion of entries, and compound pipelines like
+    /// `tar.gz` would require decompress-then-recompress which defeats the
+    /// point of an in-place append.
+    fn append(&self, _input: CmprssInput, _output: CmprssOutput) -> Result {
+        anyhow::bail!(
+            "{} archives do not support --append; only container formats (tar, zip) can be appended to in place",
+            self.name()
+        )
+    }
 
     /// List the contents of the archive to stdout.
     ///

@@ -7,7 +7,7 @@ use crate::utils::{
 use anyhow::bail;
 use clap::Args;
 use indicatif::ProgressBar;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{self, Seek, SeekFrom, Write};
 use std::path::Path;
 use tempfile::tempfile;
@@ -80,8 +80,21 @@ impl Zip {
         bar: Option<&ProgressBar>,
     ) -> Result {
         let mut zip_writer = ZipWriter::new(writer);
-        let options = self.file_options();
+        self.add_entries(&mut zip_writer, input, bar)?;
+        zip_writer.finish()?;
+        Ok(())
+    }
 
+    /// Add the given input as entries to an existing `ZipWriter`. Shared by
+    /// `compress_to_file` and the append path, which respectively initialize
+    /// the writer via `ZipWriter::new` and `ZipWriter::new_append`.
+    fn add_entries<W: Write + Seek>(
+        &self,
+        zip_writer: &mut ZipWriter<W>,
+        input: CmprssInput,
+        bar: Option<&ProgressBar>,
+    ) -> Result {
+        let options = self.file_options();
         match input {
             CmprssInput::Path(paths) => {
                 for path in paths {
@@ -90,11 +103,11 @@ impl Zip {
                         zip_writer.start_file(name, options)?;
                         let f = File::open(&path)?;
                         let mut reader = ProgressReader::new(f, bar.cloned());
-                        io::copy(&mut reader, &mut zip_writer)?;
+                        io::copy(&mut reader, zip_writer)?;
                     } else if path.is_dir() {
                         // Use the directory as the base and add its contents
                         let base = path.parent().unwrap_or(&path);
-                        add_directory(&mut zip_writer, base, &path, options, bar)?;
+                        add_directory(zip_writer, base, &path, options, bar)?;
                     } else {
                         bail!("zip does not support this file type");
                     }
@@ -103,14 +116,12 @@ impl Zip {
             CmprssInput::Pipe(mut pipe) => {
                 // For pipe input, we'll create a single file named "archive"
                 zip_writer.start_file("archive", options)?;
-                io::copy(&mut pipe, &mut zip_writer)?;
+                io::copy(&mut pipe, zip_writer)?;
             }
             CmprssInput::Reader(_) => {
                 bail!("zip does not accept an in-memory reader input");
             }
         }
-
-        zip_writer.finish()?;
         Ok(())
     }
 }
@@ -223,6 +234,31 @@ impl Compressor for Zip {
         }
     }
 
+    fn append(&self, input: CmprssInput, output: CmprssOutput) -> Result {
+        let path = match output {
+            CmprssOutput::Path(p) => p,
+            _ => bail!("zip append requires the archive path as the output target"),
+        };
+        if !path.is_file() {
+            bail!("zip append target must be an existing file: {:?}", path);
+        }
+
+        let total = match &input {
+            CmprssInput::Path(paths) => Some(total_input_bytes(paths)),
+            _ => None,
+        };
+        let bar = create_progress_bar(total, self.progress_args.progress, OutputTarget::File);
+
+        let file = OpenOptions::new().read(true).write(true).open(&path)?;
+        let mut zip_writer = ZipWriter::new_append(file)?;
+        self.add_entries(&mut zip_writer, input, bar.as_ref())?;
+        zip_writer.finish()?;
+        if let Some(b) = bar {
+            b.finish();
+        }
+        Ok(())
+    }
+
     fn list(&self, input: CmprssInput) -> Result {
         // ZipArchive requires a seekable reader. For non-path inputs we must
         // buffer into a tempfile first.
@@ -332,6 +368,50 @@ mod tests {
             progress_args: ProgressArgs::default(),
         };
         test_compression(&best_compressor)
+    }
+
+    /// Append new entries into an existing zip and confirm both old and new
+    /// entries extract correctly.
+    #[test]
+    fn test_append_adds_entries() -> Result {
+        let compressor = Zip::default();
+        let working_dir = assert_fs::TempDir::new()?;
+
+        let original = working_dir.child("original.txt");
+        original.write_str("original contents")?;
+        let extra = working_dir.child("extra.txt");
+        extra.write_str("appended contents")?;
+
+        let archive = working_dir.child("archive.zip");
+        compressor.compress(
+            CmprssInput::Path(vec![original.path().to_path_buf()]),
+            CmprssOutput::Path(archive.path().to_path_buf()),
+        )?;
+        let size_before = std::fs::metadata(archive.path())?.len();
+
+        compressor.append(
+            CmprssInput::Path(vec![extra.path().to_path_buf()]),
+            CmprssOutput::Path(archive.path().to_path_buf()),
+        )?;
+        let size_after = std::fs::metadata(archive.path())?.len();
+        assert!(
+            size_after > size_before,
+            "archive did not grow after append: {size_before} -> {size_after}",
+        );
+
+        let extract_dir = working_dir.child("extracted");
+        std::fs::create_dir_all(extract_dir.path())?;
+        compressor.extract(
+            CmprssInput::Path(vec![archive.path().to_path_buf()]),
+            CmprssOutput::Path(extract_dir.path().to_path_buf()),
+        )?;
+        extract_dir
+            .child("original.txt")
+            .assert(predicate::path::eq_file(original.path()));
+        extract_dir
+            .child("extra.txt")
+            .assert(predicate::path::eq_file(extra.path()));
+        Ok(())
     }
 
     /// Test zip-specific functionality: directory handling

@@ -3,7 +3,7 @@ extern crate tar;
 use anyhow::bail;
 use clap::Args;
 use indicatif::ProgressBar;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use tar::{Archive, Builder, EntryType, Header};
@@ -157,6 +157,52 @@ impl Compressor for Tar {
         }
     }
 
+    fn append(&self, input: CmprssInput, output: CmprssOutput) -> Result {
+        let path = match output {
+            CmprssOutput::Path(p) => p,
+            _ => bail!("tar append requires the archive path as the output target"),
+        };
+        if !path.is_file() {
+            bail!("tar append target must be an existing file: {:?}", path);
+        }
+
+        // Locate the offset just past the last entry's data (512-byte padded)
+        // so we can truncate off the trailing zero blocks and resume writing
+        // entries from there. Using the iterator is cheap: tar entries carry
+        // their own position, so we walk headers without reading file data.
+        let end_of_entries = {
+            let reader = File::open(&path)?;
+            let mut archive = Archive::new(reader);
+            let mut end: u64 = 0;
+            for entry in archive.entries()? {
+                let entry = entry?;
+                let file_pos = entry.raw_file_position();
+                let size = entry.size();
+                // Round up to the next 512-byte block boundary.
+                let padded = size.div_ceil(512) * 512;
+                end = file_pos + padded;
+            }
+            end
+        };
+
+        let mut file = OpenOptions::new().read(true).write(true).open(&path)?;
+        // Truncate any trailing end-of-archive zero blocks so the new entries
+        // start at `end_of_entries` and Builder::finish writes fresh ones.
+        file.set_len(end_of_entries)?;
+        file.seek(SeekFrom::Start(end_of_entries))?;
+
+        let total = match &input {
+            CmprssInput::Path(paths) => Some(total_input_bytes(paths)),
+            _ => None,
+        };
+        let bar = create_progress_bar(total, self.progress_args.progress, OutputTarget::File);
+        self.compress_internal(input, Builder::new(file), bar.as_ref())?;
+        if let Some(b) = bar {
+            b.finish();
+        }
+        Ok(())
+    }
+
     fn list(&self, input: CmprssInput) -> Result {
         let reader: Box<dyn Read> = match input {
             CmprssInput::Path(paths) => {
@@ -300,6 +346,70 @@ mod tests {
     fn test_tar_default_compression() -> Result {
         let compressor = Tar::default();
         test_compression(&compressor)
+    }
+
+    /// Append new entries into an existing tar and confirm both old and new
+    /// entries extract correctly.
+    #[test]
+    fn test_append_adds_entries() -> Result {
+        let compressor = Tar::default();
+        let working_dir = assert_fs::TempDir::new()?;
+
+        let original = working_dir.child("original.txt");
+        original.write_str("original contents")?;
+        let extra = working_dir.child("extra.txt");
+        extra.write_str("appended contents")?;
+
+        let archive = working_dir.child("archive.tar");
+        compressor.compress(
+            CmprssInput::Path(vec![original.path().to_path_buf()]),
+            CmprssOutput::Path(archive.path().to_path_buf()),
+        )?;
+        let size_before = std::fs::metadata(archive.path())?.len();
+
+        compressor.append(
+            CmprssInput::Path(vec![extra.path().to_path_buf()]),
+            CmprssOutput::Path(archive.path().to_path_buf()),
+        )?;
+        let size_after = std::fs::metadata(archive.path())?.len();
+        assert!(
+            size_after > size_before,
+            "archive did not grow after append: {size_before} -> {size_after}",
+        );
+
+        let extract_dir = working_dir.child("extracted");
+        std::fs::create_dir_all(extract_dir.path())?;
+        compressor.extract(
+            CmprssInput::Path(vec![archive.path().to_path_buf()]),
+            CmprssOutput::Path(extract_dir.path().to_path_buf()),
+        )?;
+
+        extract_dir
+            .child("original.txt")
+            .assert(predicate::path::eq_file(original.path()));
+        extract_dir
+            .child("extra.txt")
+            .assert(predicate::path::eq_file(extra.path()));
+        Ok(())
+    }
+
+    /// Appending to a missing target must error rather than silently creating
+    /// a new archive.
+    #[test]
+    fn test_append_missing_target_errors() {
+        let compressor = Tar::default();
+        let working_dir = assert_fs::TempDir::new().unwrap();
+        let extra = working_dir.child("extra.txt");
+        extra.write_str("x").unwrap();
+        let missing = working_dir.child("nope.tar");
+
+        let err = compressor
+            .append(
+                CmprssInput::Path(vec![extra.path().to_path_buf()]),
+                CmprssOutput::Path(missing.path().to_path_buf()),
+            )
+            .expect_err("append to a missing archive should error");
+        assert!(err.to_string().contains("must be an existing file"));
     }
 
     /// Test tar-specific functionality: directory handling

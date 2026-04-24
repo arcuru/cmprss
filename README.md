@@ -174,6 +174,15 @@ cmprss tar --extract archive.tar # extracts to the current directory
 cmprss tar -e archive.tar custom_output_directory
 ```
 
+Append new entries to an existing `tar` or `zip` archive:
+
+```bash
+cmprss tar --append new_file.txt archive.tar
+cmprss zip -a new_file.txt extra_dir/ archive.zip
+```
+
+`--append` only works for container formats that can grow in place. Stream codecs (gzip, xz, …) and compound pipelines like `tar.gz` have no way to append without rewriting the whole archive, so they error instead of silently doing the wrong thing.
+
 `cmprss` will detect if `stdin` or `stdout` is a pipe, and use those for I/O where it makes sense.
 
 Create and extract a `tar.gz` archive with pipes:
