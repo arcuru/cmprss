@@ -94,7 +94,7 @@ impl Compressor for Lzma {
 
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "LZMA")?;
-        let (input_stream, file_size) = open_input(input, "LZMA")?;
+        let (input_stream, file_size, pipeline_inner) = open_input(input, "LZMA")?;
         let (writer, target) = prepare_output(output)?;
         let mut encoder = XzEncoder::new_stream(writer, self.encoder_stream()?);
         // `copy_stream` flushes the final writer on the path/pipe branch via
@@ -105,6 +105,7 @@ impl Compressor for Lzma {
             input_stream,
             NoFlush(&mut encoder),
             file_size,
+            pipeline_inner,
             &self.progress_args,
             target,
         )?;
@@ -114,10 +115,17 @@ impl Compressor for Lzma {
 
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "LZMA")?;
-        let (input_stream, file_size) = open_input(input, "LZMA")?;
+        let (input_stream, file_size, pipeline_inner) = open_input(input, "LZMA")?;
         let decoder = XzDecoder::new_stream(input_stream, Self::decoder_stream()?);
         let (writer, target) = prepare_output(output)?;
-        copy_stream(decoder, writer, file_size, &self.progress_args, target)?;
+        copy_stream(
+            decoder,
+            writer,
+            file_size,
+            pipeline_inner,
+            &self.progress_args,
+            target,
+        )?;
         Ok(())
     }
 }

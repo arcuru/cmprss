@@ -75,10 +75,23 @@ impl Compressor for Tar {
                 Ok(())
             }
             CmprssOutput::Writer(mut writer) => {
+                // Pipeline-internal: tar is the innermost stage, writing into an
+                // in-memory pipe feeding the outer codec(s). We still own the
+                // progress bar because only tar sees the real input bytes; outer
+                // stages suppress their bar (their input size is unknown).
+                let total = match &input {
+                    CmprssInput::Path(paths) => Some(total_input_bytes(paths)),
+                    _ => None,
+                };
+                let bar =
+                    create_progress_bar(total, self.progress_args.progress, OutputTarget::File);
                 let mut temp_file = tempfile()?;
-                self.compress_internal(input, Builder::new(&mut temp_file), None)?;
+                self.compress_internal(input, Builder::new(&mut temp_file), bar.as_ref())?;
                 temp_file.seek(SeekFrom::Start(0))?;
                 io::copy(&mut temp_file, &mut writer)?;
+                if let Some(b) = bar {
+                    b.finish();
+                }
                 Ok(())
             }
         }

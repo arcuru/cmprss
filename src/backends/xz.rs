@@ -60,13 +60,14 @@ impl Compressor for Xz {
 
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "Xz")?;
-        let (input_stream, file_size) = open_input(input, "Xz")?;
+        let (input_stream, file_size, pipeline_inner) = open_input(input, "Xz")?;
         let (writer, target) = prepare_output(output)?;
         let mut encoder = XzEncoder::new(writer, self.level as u32);
         copy_stream(
             input_stream,
             &mut encoder,
             file_size,
+            pipeline_inner,
             &self.progress_args,
             target,
         )?;
@@ -76,10 +77,17 @@ impl Compressor for Xz {
 
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "Xz")?;
-        let (input_stream, file_size) = open_input(input, "Xz")?;
+        let (input_stream, file_size, pipeline_inner) = open_input(input, "Xz")?;
         let decoder = XzDecoder::new(input_stream);
         let (writer, target) = prepare_output(output)?;
-        copy_stream(decoder, writer, file_size, &self.progress_args, target)?;
+        copy_stream(
+            decoder,
+            writer,
+            file_size,
+            pipeline_inner,
+            &self.progress_args,
+            target,
+        )?;
         Ok(())
     }
 }

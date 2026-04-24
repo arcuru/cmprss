@@ -85,13 +85,14 @@ impl Compressor for Bzip2 {
     /// Compress an input file or pipe to a bz2 archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "Bzip2")?;
-        let (input_stream, file_size) = open_input(input, "Bzip2")?;
+        let (input_stream, file_size, pipeline_inner) = open_input(input, "Bzip2")?;
         let (writer, target) = prepare_output(output)?;
         let mut encoder = BzEncoder::new(writer, Compression::new(self.level as u32));
         copy_stream(
             input_stream,
             &mut encoder,
             file_size,
+            pipeline_inner,
             &self.progress_args,
             target,
         )?;
@@ -103,13 +104,14 @@ impl Compressor for Bzip2 {
     /// compressed bytes into it.
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "Bzip2")?;
-        let (input_stream, file_size) = open_input(input, "Bzip2")?;
+        let (input_stream, file_size, pipeline_inner) = open_input(input, "Bzip2")?;
         let (writer, target) = prepare_output(output)?;
         let mut decoder = BzDecoder::new(writer);
         copy_stream(
             input_stream,
             &mut decoder,
             file_size,
+            pipeline_inner,
             &self.progress_args,
             target,
         )?;

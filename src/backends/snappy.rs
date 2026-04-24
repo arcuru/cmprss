@@ -43,13 +43,14 @@ impl Compressor for Snappy {
     /// Compress an input file or pipe to a snappy frame-format archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "Snappy")?;
-        let (input_stream, file_size) = open_input(input, "Snappy")?;
+        let (input_stream, file_size, pipeline_inner) = open_input(input, "Snappy")?;
         let (writer, target) = prepare_output(output)?;
         let mut encoder = FrameEncoder::new(writer);
         copy_stream(
             input_stream,
             &mut encoder,
             file_size,
+            pipeline_inner,
             &self.progress_args,
             target,
         )?;
@@ -60,10 +61,17 @@ impl Compressor for Snappy {
     /// Extract a snappy frame-format archive to an output file or pipe
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         guard_file_output(&output, "Snappy")?;
-        let (input_stream, file_size) = open_input(input, "Snappy")?;
+        let (input_stream, file_size, pipeline_inner) = open_input(input, "Snappy")?;
         let decoder = FrameDecoder::new(input_stream);
         let (writer, target) = prepare_output(output)?;
-        copy_stream(decoder, writer, file_size, &self.progress_args, target)?;
+        copy_stream(
+            decoder,
+            writer,
+            file_size,
+            pipeline_inner,
+            &self.progress_args,
+            target,
+        )?;
         Ok(())
     }
 }

@@ -14,11 +14,16 @@ use std::io::{self, BufReader, BufWriter, Read, Write};
 
 /// Resolve a `CmprssInput` into a single boxed `Read` stream for single-stream
 /// codecs. Returns the stream together with the input file's size when known
-/// (used to drive progress bars).
+/// (used to drive progress bars) and a flag indicating whether the input is a
+/// pipeline-internal `Reader` (in which case progress should be suppressed in
+/// this stage — the innermost stage owns the bar).
 ///
 /// Bails when multiple input paths are given, or when a path input is a
 /// directory — single-stream codecs operate on exactly one byte stream.
-pub fn open_input(input: CmprssInput, name: &str) -> Result<(Box<dyn Read + Send>, Option<u64>)> {
+pub fn open_input(
+    input: CmprssInput,
+    name: &str,
+) -> Result<(Box<dyn Read + Send>, Option<u64>, bool)> {
     match input {
         CmprssInput::Path(paths) => {
             if paths.len() > 1 {
@@ -30,10 +35,10 @@ pub fn open_input(input: CmprssInput, name: &str) -> Result<(Box<dyn Read + Send
             }
             let size = std::fs::metadata(path)?.len();
             let reader: Box<dyn Read + Send> = Box::new(BufReader::new(File::open(path)?));
-            Ok((reader, Some(size)))
+            Ok((reader, Some(size), false))
         }
-        CmprssInput::Pipe(stdin) => Ok((Box::new(BufReader::new(stdin)), None)),
-        CmprssInput::Reader(reader) => Ok((reader.0, None)),
+        CmprssInput::Pipe(stdin) => Ok((Box::new(BufReader::new(stdin)), None, false)),
+        CmprssInput::Reader(reader) => Ok((reader.0, None, true)),
     }
 }
 
@@ -65,18 +70,22 @@ pub fn prepare_output(output: CmprssOutput) -> Result<(Box<dyn Write + Send>, Ou
     }
 }
 
-/// Copy bytes from `reader` through `writer`, branching on `target`:
-/// pipeline-internal stages use a bare `io::copy` (no progress), while
+/// Copy bytes from `reader` through `writer`, branching on whether progress
+/// is relevant: pipeline-internal stages (either writing to an in-memory pipe
+/// or reading from one) use a bare `io::copy` with no progress, while
 /// user-facing outputs go through `copy_with_progress` to show a progress bar
-/// when configured.
+/// when configured. `pipeline_inner` is set when the input comes from an
+/// upstream pipeline stage — in that case we don't know the total size and
+/// the innermost stage already owns the progress bar, so we skip ours.
 pub fn copy_stream<R: Read, W: Write>(
     mut reader: R,
     mut writer: W,
     file_size: Option<u64>,
+    pipeline_inner: bool,
     progress_args: &ProgressArgs,
     target: OutputTarget,
 ) -> Result {
-    if target == OutputTarget::InMemory {
+    if pipeline_inner || target == OutputTarget::InMemory {
         io::copy(&mut reader, &mut writer)?;
     } else {
         copy_with_progress(
