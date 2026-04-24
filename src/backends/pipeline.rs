@@ -243,9 +243,8 @@ impl Compressor for Pipeline {
         // Add all extensions: input.txt → input.txt.tar.gz
         let base = in_path
             .file_name()
-            .unwrap_or_else(|| std::ffi::OsStr::new("archive"))
-            .to_str()
-            .unwrap();
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "archive".to_string());
         format!("{}.{}", base, self.format_chain())
     }
 
@@ -256,10 +255,8 @@ impl Compressor for Pipeline {
         // Strip all known extensions: input.tar.gz → input
         let mut name = in_path
             .file_name()
-            .unwrap_or_else(|| std::ffi::OsStr::new("archive"))
-            .to_str()
-            .unwrap()
-            .to_string();
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "archive".to_string());
         for comp in self.compressors.iter().rev() {
             let ext = format!(".{}", comp.extension());
             if let Some(stripped) = name.strip_suffix(&ext) {

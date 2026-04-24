@@ -143,16 +143,13 @@ impl FromStr for CompressionLevel {
             return Ok(CompressionLevel { level });
         }
 
-        // Try to parse special names
-        let s = s.to_lowercase();
-        match s.as_str() {
-            "none" | "fast" | "best" => Ok(CompressionLevel {
-                // We'll use the DefaultCompressionValidator values here
-                // The actual compressor will interpret these values according to its own validator
-                level: DefaultCompressionValidator.name_to_level(&s).unwrap(),
-            }),
-            _ => Err("Invalid compression level"),
-        }
+        // Otherwise expect a named level ("none"/"fast"/"best"). The concrete
+        // compressor re-interprets this value through its own validator, so we
+        // start from the default mapping.
+        let level = DefaultCompressionValidator
+            .name_to_level(&s.to_lowercase())
+            .ok_or("Invalid compression level")?;
+        Ok(CompressionLevel { level })
     }
 }
 
@@ -213,10 +210,9 @@ pub trait Compressor: CompressorClone + Send + Sync {
     /// Just checks the extension by default
     /// Some compressors may overwrite this to do more advanced detection
     fn is_archive(&self, in_path: &Path) -> bool {
-        if in_path.extension().is_none() {
-            return false;
-        }
-        in_path.extension().unwrap() == self.extension()
+        in_path
+            .extension()
+            .is_some_and(|ext| ext == self.extension())
     }
 
     /// Generate the default name for the compressed file

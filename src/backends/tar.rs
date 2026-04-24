@@ -1,6 +1,6 @@
 extern crate tar;
 
-use anyhow::bail;
+use anyhow::{anyhow, bail};
 use clap::Args;
 use indicatif::ProgressBar;
 use std::fs::{File, OpenOptions};
@@ -240,7 +240,9 @@ impl Tar {
         match input {
             CmprssInput::Path(paths) => {
                 for path in paths {
-                    let name = path.file_name().unwrap();
+                    let name = path
+                        .file_name()
+                        .ok_or_else(|| anyhow!("input path has no file name: {:?}", path))?;
                     if path.is_file() {
                         append_file_entry(&mut archive, Path::new(name), &path, bar)?;
                     } else if path.is_dir() {

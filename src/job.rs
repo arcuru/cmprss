@@ -305,32 +305,36 @@ fn fill_missing_from_io(
         }
         Some(Action::Extract) => {
             if let CmprssInput::Path(paths) = input {
-                if paths.len() != 1 {
+                let [archive_path] = paths.as_slice() else {
                     bail!("Expected exactly one input archive");
-                }
-                *compressor = get_compressor_from_filename(paths.first().unwrap());
+                };
+                *compressor = get_compressor_from_filename(archive_path);
             }
         }
         None => match (input, output) {
-            (CmprssInput::Path(paths), CmprssOutput::Path(path)) => {
-                if path.is_dir() && paths.len() == 1 {
-                    *compressor = get_compressor_from_filename(paths.first().unwrap());
+            (CmprssInput::Path(paths), CmprssOutput::Path(path)) => match paths.as_slice() {
+                [single] if path.is_dir() => {
+                    *compressor = get_compressor_from_filename(single);
                     *action = Some(Action::Extract);
                     if compressor.is_none() {
-                        bail!(
-                            "Could not determine compressor for {:?}",
-                            paths.first().unwrap()
-                        );
+                        bail!("Could not determine compressor for {:?}", single);
                     }
-                } else {
+                }
+                _ => {
                     let (c, a) = guess_from_filenames(paths, path, compressor.take())?;
                     *compressor = Some(c);
                     *action = Some(a);
                 }
-            }
+            },
             (CmprssInput::Path(paths), CmprssOutput::Pipe(_)) => {
+                // `resolve_input` guarantees `paths` is non-empty when it
+                // returns `CmprssInput::Path`, so `first()` is always Some —
+                // but surface a clean error instead of relying on the invariant.
+                let first = paths
+                    .first()
+                    .ok_or_else(|| anyhow!("No input file specified"))?;
                 if let Some(c) = compressor.as_deref() {
-                    *action = Some(match get_compressor_from_filename(paths.first().unwrap()) {
+                    *action = Some(match get_compressor_from_filename(first) {
                         Some(ic) if ic.name() == c.name() => Action::Extract,
                         _ => Action::Compress,
                     });
@@ -338,7 +342,7 @@ fn fill_missing_from_io(
                     if paths.len() != 1 {
                         bail!("Expected exactly one input file when writing to stdout");
                     }
-                    *compressor = get_compressor_from_filename(paths.first().unwrap());
+                    *compressor = get_compressor_from_filename(first);
                     if compressor.is_some() {
                         *action = Some(Action::Extract);
                     } else {
@@ -448,22 +452,24 @@ fn guess_from_filenames(
     output: &Path,
     compressor: Option<Box<dyn Compressor>>,
 ) -> Result<(Box<dyn Compressor>, Action)> {
-    if input.len() != 1 {
-        if let Some(c) = get_compressor_from_filename(output) {
-            return Ok((c, Action::Compress));
-        }
-        if output.is_dir()
-            && let Some(first) = input.first()
-            && let Some(c) = get_compressor_from_filename(first)
-        {
+    let input = match input {
+        [single] => single,
+        _ => {
+            if let Some(c) = get_compressor_from_filename(output) {
+                return Ok((c, Action::Compress));
+            }
+            if output.is_dir()
+                && let Some(first) = input.first()
+                && let Some(c) = get_compressor_from_filename(first)
+            {
+                return Ok((c, Action::Extract));
+            }
+            // No extension hint anywhere, but we were given a compressor —
+            // assume the user wants to extract multiple archives to a directory.
+            let c = compressor.ok_or_else(|| anyhow!("Could not determine compressor to use"))?;
             return Ok((c, Action::Extract));
         }
-        // No extension hint anywhere, but we were given a compressor —
-        // assume the user wants to extract multiple archives to a directory.
-        let c = compressor.ok_or_else(|| anyhow!("Could not determine compressor to use"))?;
-        return Ok((c, Action::Extract));
-    }
-    let input = input.first().unwrap();
+    };
 
     let output_guess = get_compressor_from_filename(output);
     let input_guess = get_compressor_from_filename(input);

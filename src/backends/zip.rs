@@ -4,7 +4,7 @@ use crate::utils::{
     CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
     DefaultCompressionValidator, ExtractedTarget, LevelArgs, Result,
 };
-use anyhow::bail;
+use anyhow::{anyhow, bail};
 use clap::Args;
 use indicatif::ProgressBar;
 use std::fs::{File, OpenOptions};
@@ -99,7 +99,10 @@ impl Zip {
             CmprssInput::Path(paths) => {
                 for path in paths {
                     if path.is_file() {
-                        let name = path.file_name().unwrap().to_string_lossy();
+                        let name = path
+                            .file_name()
+                            .ok_or_else(|| anyhow!("input path has no file name: {:?}", path))?
+                            .to_string_lossy();
                         zip_writer.start_file(name, options)?;
                         let f = File::open(&path)?;
                         let mut reader = ProgressReader::new(f, bar.cloned());
@@ -308,9 +311,11 @@ fn add_directory<W: Write + Seek>(
         let entry = entry?;
         let entry_path = entry.path();
         // Get relative path for archive entry
+        // `entry_path` is a direct child of `path`, which itself sits under
+        // `base`, so stripping always succeeds.
         let name = entry_path
             .strip_prefix(base)
-            .unwrap()
+            .expect("entry path is under base")
             .to_string_lossy()
             .replace('\\', "/");
         if entry_path.is_file() {

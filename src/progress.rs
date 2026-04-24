@@ -102,7 +102,7 @@ pub fn create_progress_bar(
             };
             bar.set_style(
                 indicatif::ProgressStyle::default_bar()
-                    .template("{spinner:.green} [{elapsed_precise}] ({eta}) [{bar:40.cyan/blue}] {bytes}/{total_bytes} => {msg}").unwrap()
+                    .template("{spinner:.green} [{elapsed_precise}] ({eta}) [{bar:40.cyan/blue}] {bytes}/{total_bytes} => {msg}").expect("progress bar template literal is valid")
                     .progress_chars("#>-"),
             );
             bar.enable_steady_tick(Duration::from_millis(100));

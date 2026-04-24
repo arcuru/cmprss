@@ -4,7 +4,7 @@ use crate::utils::{
     CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
     DefaultCompressionValidator, ExtractedTarget, LevelArgs, Result,
 };
-use anyhow::bail;
+use anyhow::{anyhow, bail};
 use clap::Args;
 use indicatif::ProgressBar;
 use sevenz_rust2::{
@@ -82,7 +82,11 @@ impl SevenZ {
         match input {
             CmprssInput::Path(paths) => {
                 for path in paths {
-                    let name = path.file_name().unwrap().to_string_lossy().to_string();
+                    let name = path
+                        .file_name()
+                        .ok_or_else(|| anyhow!("input path has no file name: {:?}", path))?
+                        .to_string_lossy()
+                        .to_string();
                     if path.is_file() {
                         push_file_entry(&mut aw, &name, &path, bar)?;
                     } else if path.is_dir() {
