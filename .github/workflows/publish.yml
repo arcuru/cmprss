@@ -1,12 +1,18 @@
-# Publish workflow — builds snap package and publishes to the Snap Store.
+# Publish workflow — publishes release artifacts.
+#
+# Jobs:
+#   - snap: builds and publishes the snap package to the Snap Store.
+#   - binaries: builds static musl binaries via Nix and attaches them to the
+#     GitHub Release. Runs only on release events (not on push validation).
 #
 # Triggers:
 #   1. workflow_run: After Nix CI passes on main. Builds the snap to validate
-#      the packaging pipeline on every push to main.
+#      the packaging pipeline on every push to main. The binaries job is
+#      skipped on this trigger.
 #
 #   2. workflow_dispatch: Triggered by the release-plz workflow after a release
 #      is created, or manually for retrying a failed release. Accepts a tag name
-#      input and publishes the snap for that tag.
+#      input and publishes the snap and uploads binaries for that tag.
 #
 #   3. release (published): Kept as a fallback trigger in case the release is
 #      created with a token that fires events (e.g. a PAT or GitHub App token).
@@ -84,3 +90,71 @@ jobs:
         with:
           snap: ${{ steps.build.outputs.snap }}
           release: stable
+
+  binaries:
+    name: Binary (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    if: |
+      github.repository_owner == 'arcuru' &&
+      (github.event_name == 'release' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+    steps:
+      - name: Resolve tag
+        id: tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag_name }}
+        run: |
+          if [[ "$EVENT_NAME" == "release" ]]; then
+            TAG="$RELEASE_TAG"
+          else
+            TAG="$INPUT_TAG"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v12
+
+      - name: Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@v7
+
+      - name: Build static binary
+        run: nix build -L .#cmprss-static
+
+      - name: Package binary
+        id: pkg
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          DIR="cmprss-${TAG}-${TARGET}"
+          ASSET="${DIR}.tar.gz"
+          mkdir "$DIR"
+          install -m 0755 result/bin/cmprss "${DIR}/cmprss"
+          cp README.md LICENSE.txt "${DIR}/"
+          tar -czf "$ASSET" "$DIR"
+          sha256sum "$ASSET" > "${ASSET}.sha256"
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          ASSET: ${{ steps.pkg.outputs.asset }}
+        run: |
+          gh release upload "$TAG" "$ASSET" "${ASSET}.sha256" \
+            --clobber --repo "$GITHUB_REPOSITORY"

@@ -7,7 +7,8 @@ on:
     branches: ["main"]
 
 jobs:
-  build:
+  # Architecture-independent lints and formatting. Run once on x86_64.
+  lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -31,6 +32,26 @@ jobs:
 
       - name: Build docs
         run: nix build .#doc
+
+  # Build and test on each supported architecture.
+  build:
+    name: Build (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v12
+      - name: Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@v7
 
       - name: Test
         run: nix build .#test
