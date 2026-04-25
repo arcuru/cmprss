@@ -2,6 +2,83 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] - 2026-04-25
+
+### Bug Fixes
+
+- Trigger publish workflow explicitly from release-plz
+- Preserve per-stage config via Compressor::clone_boxed
+- Follow symlinks in container pre-walk to match walker
+- Enable ZIP64 to support archives with entries >4GiB
+- Avoid panics on non-UTF8 filenames
+- Show known total on pipeline compression bar
+
+### Documentation
+
+- List brotli, snappy, and lzma in supported formats
+
+### Features
+
+- Add brotli compression support
+- Add snappy framed compression support
+- Add legacy LZMA1 compression support
+- Recognize .tgz/.tbz/.tbz2/.txz/.tzst shortcut extensions
+- Add --force / -f to overwrite existing output
+- Generate shell completions and man page
+- Add --list / -l to print archive contents
+- Add 7zip backend with sevenz-rust2
+- Add --level compression level support
+- Add --level compression level support
+- Add progress bars with shared pre-walk helper
+- Add progress bars during compression
+- Add progress bars during extraction
+- Add progress bars during compression
+- Add progress bars during extraction
+- Install shell completions and document usage
+- Accept compound format prefix like `tar.gz` as first arg
+- Preserve shortcut format string in default output name
+- Add --append flag for growing tar and zip archives in place
+
+### Miscellaneous Tasks
+
+- Declare MSRV of 1.88 in Cargo.toml
+- Validate aarch64 in nix.yml and attach static binaries to releases
+- Pin all GitHub Actions to commit SHAs
+
+### Refactor
+
+- Extract shared I/O helpers for single-stream codecs
+- Extract job inference into its own module
+- Add LevelArgs::resolve to trim backend constructors
+- Extract mechanical helpers from get_job
+- Linearize output/action/compressor resolution in get_job
+- Eliminate Action::Unknown in favor of Option<Action>
+- Gate behind cfg(test) to exclude from release binary
+- Unify single + shortcut extension lookup in chain_from_ext
+- Collect compressors directly instead of round-tripping names
+- Replace wildcard utils imports with explicit ones
+- Drop redundant overrides and dead-code allows
+- Consolidate stream-codec scaffolding via prepare_output/copy_stream
+- Share threaded stage driver across compress/extract/list
+- Use inc-based ProgressReader for shared bars
+- Move clone_boxed to blanket helper trait
+- Collapse --decompress into --extract alias
+- Replace non-test unwraps with proper error handling
+
+### Styling
+
+- Rename ExtractedTarget variants to CamelCase
+- Unify error message prefixes across job and backends
+- Apply cargo fmt
+
+### Testing
+
+- Add lzma, brotli, tar, zip, and tar.* pipeline interop tests
+- Add tar.{bz2,zst,lzma,br,lz4,sz} roundtrip tests
+- Add snappy and tar.{lzma,br,lz4,sz} interop tests
+
+
+
 ## [0.3.0] - 2026-03-29
 
 ### Bug Fixes
