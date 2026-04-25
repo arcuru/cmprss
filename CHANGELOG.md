@@ -73,11 +73,9 @@ All notable changes to this project will be documented in this file.
 
 ### Testing
 
-- Add lzma, brotli, tar, zip, and tar.* pipeline interop tests
+- Add lzma, brotli, tar, zip, and tar.\* pipeline interop tests
 - Add tar.{bz2,zst,lzma,br,lz4,sz} roundtrip tests
 - Add snappy and tar.{lzma,br,lz4,sz} interop tests
-
-
 
 ## [0.3.0] - 2026-03-29
 
