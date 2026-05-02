@@ -1,0 +1,16 @@
+# Manual cargo-deny advisory check against the RustSec Advisory Database.
+# Spindle does not currently support scheduled triggers, so run this manually
+# from the pipelines page when checking for new advisories.
+
+when:
+  - event: ["manual"]
+
+engine: nixery
+
+dependencies:
+  nixpkgs:
+    - cargo-deny
+
+steps:
+  - name: Check advisories
+    command: cargo deny check advisories

@@ -1,0 +1,32 @@
+when:
+  - event: ["push"]
+    branch: ["main"]
+  - event: ["pull_request"]
+    branch: ["main"]
+
+engine: nixery
+
+dependencies:
+  nixpkgs:
+    - cargo
+    - rustc
+    - clippy
+    - rustfmt
+    - gcc
+    - pkg-config
+
+environment:
+  CARGO_TERM_COLOR: always
+
+steps:
+  - name: Build
+    command: cargo build
+
+  - name: Test
+    command: cargo test
+
+  - name: Format
+    command: cargo fmt -- --check
+
+  - name: Clippy
+    command: cargo clippy -- -D warnings
