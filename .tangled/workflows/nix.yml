@@ -1,0 +1,44 @@
+when:
+  - event: ["push"]
+    branch: ["main"]
+  - event: ["pull_request"]
+    branch: ["main"]
+
+engine: nixery
+
+dependencies:
+  nixpkgs:
+    - nix
+    - git
+
+environment:
+  NIX_CONFIG: |
+    experimental-features = nix-command flakes
+
+steps:
+  - name: Format
+    command: nix build -L .#fmt
+
+  - name: Format non-Rust (treefmt)
+    command: nix build -L .#checks.x86_64-linux.treefmt
+
+  - name: Deny (licenses + bans + sources)
+    command: nix build -L .#deny
+
+  - name: Clippy
+    command: nix build -L .#clippy
+
+  - name: Build docs
+    command: nix build -L .#doc
+
+  - name: Test
+    command: nix build -L .#test
+
+  - name: Build cmprss
+    command: nix build -L .#cmprss
+
+  - name: Build static musl binary
+    command: nix build -L .#cmprss-static
+
+  - name: Forgotten checks
+    command: nix flake check
