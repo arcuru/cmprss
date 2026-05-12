@@ -1,0 +1,14 @@
+name: "Deps: Hold Gate"
+
+on:
+  pull_request:
+    branches: ["main"]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  hold:
+    uses: arcuru/actions/.github/workflows/dependency-hold.yml@31c804a9c15602300e5e292e80cac1ad5512a21a # v0.2.0
