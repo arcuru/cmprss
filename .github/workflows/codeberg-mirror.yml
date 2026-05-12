@@ -1,4 +1,5 @@
 name: Codeberg Sync
+
 on:
   push:
     branches:
@@ -8,15 +9,9 @@ permissions:
   contents: read
 
 jobs:
-  codeberg:
-    runs-on: ubuntu-latest
-    if: github.repository_owner == 'arcuru'
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-      - uses: yesolutions/mirror-action@662fce0eced8996f64d7fa264d76cddd84827f33 # master
-        with:
-          REMOTE: git@codeberg.org:arcuru/cmprss.git
-          GIT_SSH_PRIVATE_KEY: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
-          GIT_SSH_NO_VERIFY_HOST: "true"
+  mirror:
+    uses: arcuru/actions/.github/workflows/codeberg-mirror.yml@31c804a9c15602300e5e292e80cac1ad5512a21a # main
+    with:
+      destination: git@codeberg.org:arcuru/cmprss.git
+    secrets:
+      ssh-private-key: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
