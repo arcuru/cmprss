@@ -37,6 +37,9 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   snap:
     name: Snap
@@ -45,6 +48,8 @@ jobs:
       github.repository_owner == 'arcuru' &&
       (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     environment: ${{ (github.event_name == 'release' || github.event_name == 'workflow_dispatch') && 'publish' || '' }}
+    permissions:
+      contents: read
     steps:
       - name: Resolve ref
         id: ref
