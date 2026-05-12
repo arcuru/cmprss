@@ -1,0 +1,25 @@
+name: "Deps: Cargo Update"
+
+on:
+  schedule:
+    - cron: "0 4 1 * *"
+  workflow_dispatch:
+    inputs:
+      hold_days:
+        description: "Days to hold before allowing merge"
+        required: false
+        default: "7"
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  cargo-update:
+    uses: arcuru/actions/.github/workflows/cargo-update.yml@31c804a9c15602300e5e292e80cac1ad5512a21a # v0.2.0
+    with:
+      hold-days: ${{ inputs.hold_days || '7' }}
+      environment: automation
+    secrets:
+      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}

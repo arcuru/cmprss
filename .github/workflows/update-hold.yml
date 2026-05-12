@@ -1,0 +1,14 @@
+name: "Deps: Hold Expiry"
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  pull-requests: write
+  checks: write
+
+jobs:
+  update-hold:
+    uses: arcuru/actions/.github/workflows/update-hold.yml@31c804a9c15602300e5e292e80cac1ad5512a21a # v0.2.0
