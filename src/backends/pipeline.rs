@@ -1,3 +1,4 @@
+use crate::progress::{OutputTarget, copy_with_progress};
 use crate::utils::{
     CmprssInput, CmprssOutput, Compressor, ExtractedTarget, PassthroughWriter, ReadWrapper,
     Result, StreamWriter, WriteWrapper,
@@ -173,26 +174,29 @@ impl Drop for FinalizeOnDrop {
     }
 }
 
-/// Open the original sink writer for the user-supplied `CmprssOutput`. We
-/// don't reuse `prepare_output` here because it returns the writer alongside
-/// an `OutputTarget` for progress, which the pipeline doesn't drive
-/// directly — single-codec stages still report progress via their own
-/// `Compressor::compress` paths when invoked outside the pipeline.
-fn open_sink(output: CmprssOutput) -> Result<Box<dyn Write + Send>> {
+/// Open the original sink writer for the user-supplied `CmprssOutput`, along
+/// with the `OutputTarget` describing how a progress bar should treat it
+/// (file → show, stdout → suppress in `Auto` mode, in-memory → no bar).
+fn open_sink(output: CmprssOutput) -> Result<(Box<dyn Write + Send>, OutputTarget)> {
     use std::fs::File;
     use std::io::BufWriter;
     match output {
-        CmprssOutput::Writer(WriteWrapper(w)) => Ok(w),
-        CmprssOutput::Pipe(stdout) => Ok(Box::new(BufWriter::new(stdout))),
-        CmprssOutput::Path(path) => Ok(Box::new(BufWriter::new(File::create(path)?))),
+        CmprssOutput::Writer(WriteWrapper(w)) => Ok((w, OutputTarget::InMemory)),
+        CmprssOutput::Pipe(stdout) => Ok((Box::new(BufWriter::new(stdout)), OutputTarget::Stdout)),
+        CmprssOutput::Path(path) => Ok((
+            Box::new(BufWriter::new(File::create(path)?)),
+            OutputTarget::File,
+        )),
     }
 }
 
-/// Open the original source reader for the user-supplied `CmprssInput`. For
-/// path inputs we require exactly one file (single-stream codecs don't accept
-/// multiple inputs); container-led extracts route through `input` unchanged
-/// before this is called, so directory inputs never reach here.
-fn open_source(input: CmprssInput, name: &str) -> Result<Box<dyn Read + Send>> {
+/// Open the original source reader for the user-supplied `CmprssInput` along
+/// with the input file's size when known (used by the codec-only progress
+/// bar; `None` for stdin and in-memory readers). For path inputs we require
+/// exactly one file (single-stream codecs don't accept multiple inputs);
+/// container-led extracts route through `input` unchanged before this is
+/// called, so directory inputs never reach here.
+fn open_source(input: CmprssInput, name: &str) -> Result<(Box<dyn Read + Send>, Option<u64>)> {
     use std::fs::File;
     use std::io::BufReader;
     match input {
@@ -203,10 +207,11 @@ fn open_source(input: CmprssInput, name: &str) -> Result<Box<dyn Read + Send>> {
             if paths[0].is_dir() {
                 bail!("{name} does not operate on directories");
             }
-            Ok(Box::new(BufReader::new(File::open(&paths[0])?)))
+            let size = std::fs::metadata(&paths[0])?.len();
+            Ok((Box::new(BufReader::new(File::open(&paths[0])?)), Some(size)))
         }
-        CmprssInput::Pipe(stdin) => Ok(Box::new(BufReader::new(stdin))),
-        CmprssInput::Reader(ReadWrapper(r)) => Ok(r),
+        CmprssInput::Pipe(stdin) => Ok((Box::new(BufReader::new(stdin)), None)),
+        CmprssInput::Reader(ReadWrapper(r)) => Ok((r, None)),
     }
 }
 
@@ -273,14 +278,14 @@ impl Compressor for Pipeline {
             return self.compressors[0].compress(input, output);
         }
         let (container, codecs) = self.split_chain()?;
-        let sink = open_sink(output)?;
-        let chain = Self::build_encoder_chain(codecs, sink)?;
 
         match container {
             Some(c) => {
                 // Hand the container a writer that finalizes the codec chain
                 // when it goes out of scope (i.e. when the container's
                 // compress returns), and surface any finalize error.
+                let (sink, _target) = open_sink(output)?;
+                let chain = Self::build_encoder_chain(codecs, sink)?;
                 let slot = Arc::new(Mutex::new(None));
                 let handle = FinalizeOnDrop {
                     inner: Some(chain),
@@ -295,21 +300,31 @@ impl Compressor for Pipeline {
                 Ok(())
             }
             None => {
-                // All-codec chain: copy raw input bytes through the wrapped
-                // writer, then finalize.
-                //
-                // TODO(progress): codec-only chains (e.g. `.gz.xz`) do bare
-                // `io::copy` here. The single-codec path uses
-                // `copy_with_progress`; for parity, Pipeline would need to
-                // route a `ProgressArgs` through (it currently has none of
-                // its own — every per-stage `progress_args` field is on the
-                // codec struct and is only consulted by the single-codec
-                // `Compressor::compress` delegation). Container chains
-                // (`tar.gz`) are fine because the container drives its own
-                // progress.
-                let mut reader = open_source(input, self.name())?;
+                // All-codec chain (e.g. `.gz.xz`): drive a progress bar over
+                // the raw source-byte reads, mirroring the single-codec
+                // `stream_compress` path. We borrow the outermost codec's
+                // `ProgressArgs` because it sits closest to disk on the
+                // write path and is what a user would set for the equivalent
+                // single-codec invocation. Library callers configuring a
+                // Pipeline directly can pick whatever stage they want by
+                // setting that stage's `progress_args`.
+                let (source, input_size) = open_source(input, self.name())?;
+                let (sink, target) = open_sink(output)?;
+                let chain = Self::build_encoder_chain(codecs, sink)?;
+                let progress = codecs
+                    .last()
+                    .and_then(|c| c.progress_args())
+                    .copied()
+                    .unwrap_or_default();
                 let mut chain = chain;
-                io::copy(&mut reader, &mut chain)?;
+                copy_with_progress(
+                    source,
+                    &mut chain,
+                    progress.chunk_size.size_in_bytes,
+                    input_size,
+                    progress.progress,
+                    target,
+                )?;
                 chain.finish()?;
                 Ok(())
             }
@@ -322,7 +337,7 @@ impl Compressor for Pipeline {
             return self.compressors[0].extract(input, output);
         }
         let (container, codecs) = self.split_chain()?;
-        let source = open_source(input, self.name())?;
+        let (source, input_size) = open_source(input, self.name())?;
         let chain = Self::build_decoder_chain(codecs, source)?;
 
         match container {
@@ -345,12 +360,24 @@ impl Compressor for Pipeline {
                 c.extract(CmprssInput::Reader(ReadWrapper(chain)), final_output)
             }
             None => {
-                // All-codec chain: copy decoded bytes to the output sink.
-                // See the TODO(progress) in compress() — same omission here.
-                let mut sink = open_sink(output)?;
-                let mut chain = chain;
-                io::copy(&mut chain, &mut sink)?;
-                sink.flush()?;
+                // All-codec chain: drive a progress bar against the encoded
+                // archive size (the only size we know up front; the decoded
+                // total isn't available until we've decoded it). Same
+                // outermost-codec source for progress settings as compress().
+                let (sink, target) = open_sink(output)?;
+                let progress = codecs
+                    .last()
+                    .and_then(|c| c.progress_args())
+                    .copied()
+                    .unwrap_or_default();
+                copy_with_progress(
+                    chain,
+                    sink,
+                    progress.chunk_size.size_in_bytes,
+                    input_size,
+                    progress.progress,
+                    target,
+                )?;
                 Ok(())
             }
         }
@@ -375,7 +402,7 @@ impl Compressor for Pipeline {
             return self.compressors[0].list(input);
         }
         let (container, codecs) = self.split_chain()?;
-        let source = open_source(input, self.name())?;
+        let (source, _input_size) = open_source(input, self.name())?;
         let chain = Self::build_decoder_chain(codecs, source)?;
         match container {
             Some(c) => c.list(CmprssInput::Reader(ReadWrapper(chain))),

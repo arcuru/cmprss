@@ -94,6 +94,10 @@ impl Compressor for Xz {
         Some(self)
     }
 
+    fn progress_args(&self) -> Option<&ProgressArgs> {
+        Some(&self.progress_args)
+    }
+
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         stream_compress(self, "Xz", input, output, &self.progress_args)
     }
