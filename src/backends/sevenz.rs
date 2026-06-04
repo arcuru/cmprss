@@ -119,6 +119,10 @@ impl Compressor for SevenZ {
         ExtractedTarget::Directory
     }
 
+    fn progress_args(&self) -> Option<&ProgressArgs> {
+        Some(&self.progress_args)
+    }
+
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         match output {
             CmprssOutput::Path(ref path) => {

@@ -74,6 +74,10 @@ impl Compressor for Lz4 {
         Some(self)
     }
 
+    fn progress_args(&self) -> Option<&ProgressArgs> {
+        Some(&self.progress_args)
+    }
+
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
         stream_compress(self, "LZ4", input, output, &self.progress_args)
     }

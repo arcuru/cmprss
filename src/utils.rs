@@ -1,3 +1,4 @@
+use crate::progress::ProgressArgs;
 use clap::Args;
 use std::fmt;
 use std::io;
@@ -334,6 +335,14 @@ pub trait Compressor: CompressorClone + Send + Sync {
     /// instead of running each stage in its own thread. Container formats
     /// (tar, zip, sevenz) leave this as `None`.
     fn as_stream_codec(&self) -> Option<&dyn StreamCodec> {
+        None
+    }
+
+    /// Return this compressor's progress configuration when it has one. Used
+    /// by `Pipeline` to drive a progress bar over codec-only chains (where no
+    /// container is around to drive its own bar). Default `None` means "no
+    /// preference"; callers fall back to `ProgressArgs::default()`.
+    fn progress_args(&self) -> Option<&ProgressArgs> {
         None
     }
 }
