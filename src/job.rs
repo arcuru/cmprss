@@ -542,7 +542,12 @@ fn guess_from_filenames(
     }
 }
 
-#[cfg(test)]
+// These tests check the extension-to-codec lookup across the full codec set;
+// they expect every standard archive extension to resolve. Gating them behind
+// `full` keeps the test suite honest when building with a codec subset
+// (`cargo test --no-default-features --features gzip` still runs the
+// per-codec tests in each backend; just not these multi-codec sweeps).
+#[cfg(all(test, feature = "full"))]
 mod tests {
     use super::*;
     use crate::utils::ExtractedTarget;

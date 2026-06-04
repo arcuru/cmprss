@@ -388,11 +388,13 @@ impl Compressor for Pipeline {
 }
 
 #[cfg(test)]
+#[allow(unused_imports)]
 mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
 
+    #[cfg(all(feature = "tar", feature = "gzip"))]
     #[test]
     fn test_pipeline_compression() -> Result {
         let temp_dir = tempdir()?;
@@ -437,6 +439,7 @@ mod tests {
     /// of the level the user requested; the StreamCodec rewrite uses the
     /// per-stage config directly, so this test guards against regressions in
     /// either direction.
+    #[cfg(all(feature = "tar", feature = "gzip"))]
     #[test]
     fn test_pipeline_preserves_stage_config() -> Result {
         use crate::progress::ProgressArgs;
@@ -474,6 +477,7 @@ mod tests {
 
     /// A multi-codec chain (no container) should still round-trip cleanly:
     /// raw bytes → gz → xz → file, then file → xz → gz → raw bytes.
+    #[cfg(all(feature = "gzip", feature = "xz"))]
     #[test]
     fn test_pipeline_codec_only_roundtrip() -> Result {
         let temp_dir = tempdir()?;

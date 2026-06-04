@@ -1,47 +1,94 @@
+#[cfg(feature = "brotli")]
 mod brotli;
+#[cfg(feature = "bzip2")]
 mod bzip2;
+#[cfg(any(feature = "tar", feature = "zip", feature = "sevenz"))]
 mod containers;
+#[cfg(feature = "gzip")]
 mod gzip;
+#[cfg(feature = "lz4")]
 mod lz4;
+#[cfg(feature = "lzma")]
 mod lzma;
 mod pipeline;
+#[cfg(feature = "sevenz")]
 mod sevenz;
+#[cfg(feature = "snappy")]
 mod snappy;
+#[cfg(any(
+    feature = "gzip",
+    feature = "xz",
+    feature = "bzip2",
+    feature = "zstd",
+    feature = "lz4",
+    feature = "brotli",
+    feature = "snappy",
+    feature = "lzma",
+))]
 mod stream;
+#[cfg(feature = "tar")]
 mod tar;
+#[cfg(feature = "xz")]
 mod xz;
+#[cfg(feature = "zip")]
 mod zip;
+#[cfg(feature = "zstd")]
 mod zstd;
 
+#[cfg(feature = "brotli")]
 pub use brotli::{Brotli, BrotliArgs};
+#[cfg(feature = "bzip2")]
 pub use bzip2::{Bzip2, Bzip2Args};
+#[cfg(feature = "gzip")]
 pub use gzip::{Gzip, GzipArgs};
+#[cfg(feature = "lz4")]
 pub use lz4::{Lz4, Lz4Args};
+#[cfg(feature = "lzma")]
 pub use lzma::{Lzma, LzmaArgs};
 pub use pipeline::Pipeline;
+#[cfg(feature = "sevenz")]
 pub use sevenz::{SevenZ, SevenZArgs};
+#[cfg(feature = "snappy")]
 pub use snappy::{Snappy, SnappyArgs};
+#[cfg(feature = "tar")]
 pub use tar::{Tar, TarArgs};
+#[cfg(feature = "xz")]
 pub use xz::{Xz, XzArgs};
+#[cfg(feature = "zip")]
 pub use zip::{Zip, ZipArgs};
+#[cfg(feature = "zstd")]
 pub use zstd::{Zstd, ZstdArgs};
 
 use crate::utils::Compressor;
 
 /// Create a default compressor instance from an extension or name string.
 /// This is the single canonical lookup table for all compressor types.
+///
+/// Arms for codecs whose Cargo feature is disabled simply aren't compiled in,
+/// so an unknown-to-this-build codec name returns `None` just like a typo.
 pub fn compressor_from_str(s: &str) -> Option<Box<dyn Compressor>> {
     match s {
+        #[cfg(feature = "tar")]
         "tar" => Some(Box::<Tar>::default()),
+        #[cfg(feature = "gzip")]
         "gzip" | "gz" => Some(Box::<Gzip>::default()),
+        #[cfg(feature = "xz")]
         "xz" => Some(Box::<Xz>::default()),
+        #[cfg(feature = "bzip2")]
         "bzip2" | "bz2" => Some(Box::<Bzip2>::default()),
+        #[cfg(feature = "zip")]
         "zip" => Some(Box::<Zip>::default()),
+        #[cfg(feature = "zstd")]
         "zstd" | "zst" => Some(Box::<Zstd>::default()),
+        #[cfg(feature = "lz4")]
         "lz4" => Some(Box::<Lz4>::default()),
+        #[cfg(feature = "brotli")]
         "brotli" | "br" => Some(Box::<Brotli>::default()),
+        #[cfg(feature = "snappy")]
         "snappy" | "sz" => Some(Box::<Snappy>::default()),
+        #[cfg(feature = "lzma")]
         "lzma" => Some(Box::<Lzma>::default()),
+        #[cfg(feature = "sevenz")]
         "7z" | "sevenz" => Some(Box::<SevenZ>::default()),
         _ => None,
     }
@@ -56,9 +103,13 @@ pub fn compressor_from_str(s: &str) -> Option<Box<dyn Compressor>> {
 /// means. Both single extensions and compound shortcuts flow through here.
 pub fn chain_from_ext(ext: &str) -> Option<Vec<Box<dyn Compressor>>> {
     match ext {
+        #[cfg(all(feature = "tar", feature = "gzip"))]
         "tgz" => Some(vec![Box::<Tar>::default(), Box::<Gzip>::default()]),
+        #[cfg(all(feature = "tar", feature = "bzip2"))]
         "tbz" | "tbz2" => Some(vec![Box::<Tar>::default(), Box::<Bzip2>::default()]),
+        #[cfg(all(feature = "tar", feature = "xz"))]
         "txz" => Some(vec![Box::<Tar>::default(), Box::<Xz>::default()]),
+        #[cfg(all(feature = "tar", feature = "zstd"))]
         "tzst" => Some(vec![Box::<Tar>::default(), Box::<Zstd>::default()]),
         _ => compressor_from_str(ext).map(|c| vec![c]),
     }
