@@ -3,11 +3,11 @@ use crate::{
     progress::ProgressArgs,
     utils::{
         CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
-        DefaultCompressionValidator, LevelArgs, Result,
+        DefaultCompressionValidator, LevelArgs, Result, StreamCodec, StreamWriter,
     },
 };
 use clap::Args;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use xz2::read::XzDecoder;
 use xz2::stream::{LzmaOptions, Stream};
 use xz2::write::XzEncoder;
@@ -81,6 +81,47 @@ impl Lzma {
     }
 }
 
+/// StreamCodec encoder for legacy LZMA1. Owns an `XzEncoder` driving an
+/// `lzma_alone` stream; its `flush` is a no-op because LZMA1 rejects the
+/// `LZMA_FULL_FLUSH` that `XzEncoder::flush` would issue. Finalization goes
+/// through `try_finish` instead, mirroring the existing single-codec path.
+struct LzmaStreamEncoder(XzEncoder<Box<dyn StreamWriter>>);
+
+impl Write for LzmaStreamEncoder {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl StreamWriter for LzmaStreamEncoder {
+    fn finish(self: Box<Self>) -> io::Result<()> {
+        let mut encoder = (*self).0;
+        encoder.try_finish()?;
+        let inner = encoder.finish()?;
+        inner.finish()
+    }
+}
+
+impl StreamCodec for Lzma {
+    fn encoder(&self, inner: Box<dyn StreamWriter>) -> io::Result<Box<dyn StreamWriter>> {
+        let stream = self
+            .encoder_stream()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        Ok(Box::new(LzmaStreamEncoder(XzEncoder::new_stream(
+            inner, stream,
+        ))))
+    }
+
+    fn decoder(&self, inner: Box<dyn Read + Send>) -> io::Result<Box<dyn Read + Send>> {
+        let stream =
+            Self::decoder_stream().map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        Ok(Box::new(XzDecoder::new_stream(inner, stream)))
+    }
+}
+
 impl Compressor for Lzma {
     /// The standard extension for legacy LZMA (`.lzma`) files.
     fn extension(&self) -> &str {
@@ -90,6 +131,10 @@ impl Compressor for Lzma {
     /// Full name for lzma.
     fn name(&self) -> &str {
         "lzma"
+    }
+
+    fn as_stream_codec(&self) -> Option<&dyn StreamCodec> {
+        Some(self)
     }
 
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
