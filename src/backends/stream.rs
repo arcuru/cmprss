@@ -7,7 +7,9 @@
 //! consolidate that plumbing so each backend only expresses its codec choice.
 
 use crate::progress::{OutputTarget, ProgressArgs, copy_with_progress};
-use crate::utils::{CmprssInput, CmprssOutput, Result, WriteWrapper};
+use crate::utils::{
+    CmprssInput, CmprssOutput, PassthroughWriter, Result, StreamCodec, WriteWrapper,
+};
 use anyhow::bail;
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read, Write};
@@ -97,5 +99,57 @@ pub fn copy_stream<R: Read, W: Write>(
             target,
         )?;
     }
+    Ok(())
+}
+
+/// Drive a single-codec compress through the `StreamCodec` decorator. Every
+/// stream backend's `Compressor::compress` boils down to this: resolve I/O,
+/// wrap the output writer with the codec's encoder, copy with progress, then
+/// finalize the encoder cascade. Replaces the per-backend duplication of
+/// `SpecificEncoder::new(writer)` + `encoder.finish()`.
+pub fn stream_compress(
+    codec: &dyn StreamCodec,
+    name: &str,
+    input: CmprssInput,
+    output: CmprssOutput,
+    progress_args: &ProgressArgs,
+) -> Result {
+    guard_file_output(&output, name)?;
+    let (input_stream, file_size, pipeline_inner) = open_input(input, name)?;
+    let (writer, target) = prepare_output(output)?;
+    let mut encoder = codec.encoder(Box::new(PassthroughWriter(writer)))?;
+    copy_stream(
+        input_stream,
+        &mut encoder,
+        file_size,
+        pipeline_inner,
+        progress_args,
+        target,
+    )?;
+    encoder.finish()?;
+    Ok(())
+}
+
+/// Drive a single-codec extract through the `StreamCodec` decorator. Mirror
+/// of `stream_compress` for the read direction.
+pub fn stream_extract(
+    codec: &dyn StreamCodec,
+    name: &str,
+    input: CmprssInput,
+    output: CmprssOutput,
+    progress_args: &ProgressArgs,
+) -> Result {
+    guard_file_output(&output, name)?;
+    let (input_stream, file_size, pipeline_inner) = open_input(input, name)?;
+    let decoder = codec.decoder(input_stream)?;
+    let (writer, target) = prepare_output(output)?;
+    copy_stream(
+        decoder,
+        writer,
+        file_size,
+        pipeline_inner,
+        progress_args,
+        target,
+    )?;
     Ok(())
 }
