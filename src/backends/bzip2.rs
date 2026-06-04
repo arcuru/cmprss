@@ -1,4 +1,4 @@
-use super::stream::{copy_stream, guard_file_output, open_input, prepare_output};
+use super::stream::{stream_compress, stream_extract};
 use crate::{
     progress::ProgressArgs,
     utils::{
@@ -7,7 +7,7 @@ use crate::{
     },
 };
 use bzip2::Compression;
-use bzip2::write::{BzDecoder, BzEncoder};
+use bzip2::write::BzEncoder;
 use clap::Args;
 use std::io::{self, Read, Write};
 
@@ -98,9 +98,6 @@ impl StreamCodec for Bzip2 {
         ))))
     }
 
-    /// The current Compressor::extract path uses `bzip2::write::BzDecoder` (a
-    /// write-driven decoder); for the read-shaped StreamCodec API we use the
-    /// read-driven variant so the pipeline can chain it as `Read → Read`.
     fn decoder(&self, inner: Box<dyn Read + Send>) -> io::Result<Box<dyn Read + Send>> {
         Ok(Box::new(bzip2::read::BzDecoder::new(inner)))
     }
@@ -121,40 +118,12 @@ impl Compressor for Bzip2 {
         Some(self)
     }
 
-    /// Compress an input file or pipe to a bz2 archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        guard_file_output(&output, "Bzip2")?;
-        let (input_stream, file_size, pipeline_inner) = open_input(input, "Bzip2")?;
-        let (writer, target) = prepare_output(output)?;
-        let mut encoder = BzEncoder::new(writer, Compression::new(self.level as u32));
-        copy_stream(
-            input_stream,
-            &mut encoder,
-            file_size,
-            pipeline_inner,
-            &self.progress_args,
-            target,
-        )?;
-        Ok(())
+        stream_compress(self, "Bzip2", input, output, &self.progress_args)
     }
 
-    /// Extract a bz2 archive to a file or pipe. Unlike most decoders,
-    /// `BzDecoder` is write-driven: it wraps the output writer and we feed
-    /// compressed bytes into it.
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        guard_file_output(&output, "Bzip2")?;
-        let (input_stream, file_size, pipeline_inner) = open_input(input, "Bzip2")?;
-        let (writer, target) = prepare_output(output)?;
-        let mut decoder = BzDecoder::new(writer);
-        copy_stream(
-            input_stream,
-            &mut decoder,
-            file_size,
-            pipeline_inner,
-            &self.progress_args,
-            target,
-        )?;
-        Ok(())
+        stream_extract(self, "Bzip2", input, output, &self.progress_args)
     }
 }
 
