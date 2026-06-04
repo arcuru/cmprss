@@ -1,15 +1,27 @@
 use crate::utils::{
-    CmprssInput, CmprssOutput, Compressor, ExtractedTarget, ReadWrapper, Result, WriteWrapper,
+    CmprssInput, CmprssOutput, Compressor, ExtractedTarget, PassthroughWriter, ReadWrapper,
+    Result, StreamWriter, WriteWrapper,
 };
 use anyhow::{anyhow, bail};
 use std::io::{self, Read, Write};
 use std::path::Path;
-use std::sync::mpsc::{Receiver, Sender, channel};
-use std::thread;
+use std::sync::{Arc, Mutex};
 
-/// A pipeline of one or more compressors applied in sequence (e.g., tar.gz)
+/// A pipeline of one or more compressors applied in sequence (e.g., tar.gz).
+///
+/// The chain is laid out **innermost → outermost**: for `tar.gz`, that's
+/// `[tar, gz]` — tar produces archive bytes, gz wraps those bytes. At most
+/// one container (tar / zip / sevenz — anything whose
+/// [`Compressor::as_stream_codec`] returns `None`) is allowed, and it must
+/// sit at the innermost position. Everything outside the container is a
+/// [`StreamCodec`](crate::utils::StreamCodec) decorator.
+///
+/// Compression composes the codecs onto the output writer (innermost wraps
+/// first, then each outer codec wraps the previous layer); decompression
+/// composes onto the input reader the same way. The container, when
+/// present, runs at the boundary on the main thread — there is no thread or
+/// channel involved in this pipeline.
 pub struct Pipeline {
-    // The chain of compressors to apply in order (innermost to outermost)
     compressors: Vec<Box<dyn Compressor>>,
     /// Preserves the user's original format string (e.g. `tgz`) so default
     /// filenames use it verbatim instead of the dotted composition of each
@@ -27,17 +39,7 @@ impl Clone for Pipeline {
     }
 }
 
-/// Which method intermediate (threaded) stages should invoke. The final stage
-/// always runs on the calling thread and is handled by a caller-supplied
-/// closure — only the intermediate layers need this dispatch.
-#[derive(Clone, Copy)]
-enum StageAction {
-    Compress,
-    Extract,
-}
-
 impl Pipeline {
-    /// Create a new Pipeline with the given compressors
     pub fn new(compressors: Vec<Box<dyn Compressor>>) -> Self {
         Pipeline {
             compressors,
@@ -55,7 +57,7 @@ impl Pipeline {
         }
     }
 
-    /// Get a string representation of the chained format (e.g., "tar.gz")
+    /// Get a string representation of the chained format (e.g., "tar.gz").
     fn format_chain(&self) -> String {
         if let Some(ref f) = self.format_override {
             return f.clone();
@@ -67,153 +69,141 @@ impl Pipeline {
             .join(".")
     }
 
-    /// Run an ordered chain of compressor stages, with each non-final stage
-    /// in its own thread linked by an in-memory pipe. The final (last) stage
-    /// runs on the calling thread via `finalize`. Intermediate stages all
-    /// invoke the same method — `compress` going outward through a
-    /// compression pipeline, `extract` unwrapping layers on the way in.
-    fn run_threaded<F>(
-        stages: Vec<Box<dyn Compressor>>,
-        initial_input: CmprssInput,
-        intermediate: StageAction,
-        finalize: F,
-    ) -> Result
-    where
-        F: FnOnce(Box<dyn Compressor>, CmprssInput) -> Result,
-    {
-        debug_assert!(!stages.is_empty(), "pipeline is never empty");
-        let mut stages = stages;
-        let last = stages.pop().expect("pipeline is never empty");
-        let buffer_size = 64 * 1024;
-        let mut current_input = initial_input;
-        let mut handles = Vec::new();
-
-        for stage in stages {
-            let (sender, receiver) = channel::<Vec<u8>>();
-            let stage_output =
-                CmprssOutput::Writer(WriteWrapper(Box::new(PipeWriter::new(sender, buffer_size))));
-            let next_input = CmprssInput::Reader(ReadWrapper(Box::new(PipeReader::new(receiver))));
-            let stage_input = std::mem::replace(&mut current_input, next_input);
-
-            let handle = thread::spawn(move || match intermediate {
-                StageAction::Compress => stage.compress(stage_input, stage_output),
-                StageAction::Extract => stage.extract(stage_input, stage_output),
-            });
-            handles.push(handle);
-        }
-
-        finalize(last, current_input)?;
-
-        for handle in handles {
-            handle
-                .join()
-                .map_err(|_| anyhow!("Pipeline stage thread panicked"))??;
-        }
-        Ok(())
-    }
-}
-
-/// A reader that reads from a receiver channel
-struct PipeReader {
-    receiver: Receiver<Vec<u8>>,
-    buffer: Vec<u8>,
-    position: usize,
-    eof: bool,
-}
-
-impl PipeReader {
-    fn new(receiver: Receiver<Vec<u8>>) -> Self {
-        PipeReader {
-            receiver,
-            buffer: Vec::new(),
-            position: 0,
-            eof: false,
-        }
-    }
-}
-
-impl Read for PipeReader {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        // If we've reached EOF, return 0 to signal that
-        if self.eof && self.position >= self.buffer.len() {
-            return Ok(0);
-        }
-
-        // If we've consumed the current buffer, try to get a new one
-        if self.position >= self.buffer.len() {
-            match self.receiver.recv() {
-                Ok(data) => {
-                    // Empty data signals EOF from the writer
-                    if data.is_empty() {
-                        self.eof = true;
-                        return Ok(0);
-                    }
-                    self.buffer = data;
-                    self.position = 0;
-                }
-                Err(_) => {
-                    // Channel closed, this means EOF
-                    self.eof = true;
-                    return Ok(0);
-                }
+    /// Split the chain into an optional innermost container and the surrounding
+    /// stream codecs. Bails if any non-innermost stage is a container, since
+    /// "tar inside gzip outside tar" makes no sense as a composition.
+    fn split_chain(&self) -> Result<(Option<&dyn Compressor>, &[Box<dyn Compressor>])> {
+        debug_assert!(!self.compressors.is_empty(), "pipeline is never empty");
+        let first = self.compressors[0].as_ref();
+        let (container, codecs) = if first.as_stream_codec().is_none() {
+            (Some(first), &self.compressors[1..])
+        } else {
+            (None, &self.compressors[..])
+        };
+        for stage in codecs {
+            if stage.as_stream_codec().is_none() {
+                bail!(
+                    "pipeline contains a non-stream stage ({}) outside the innermost position; \
+                     container formats (tar, zip, 7z) can only appear as the innermost layer",
+                    stage.name()
+                );
             }
         }
-
-        // Copy data from our buffer to the output buffer
-        let available = self.buffer.len() - self.position;
-        let to_copy = available.min(buf.len());
-        buf[..to_copy].copy_from_slice(&self.buffer[self.position..self.position + to_copy]);
-        self.position += to_copy;
-        Ok(to_copy)
+        Ok((container, codecs))
     }
-}
 
-/// A writer that writes to a sender channel
-struct PipeWriter {
-    sender: Sender<Vec<u8>>,
-    buffer_size: usize,
-}
-
-impl PipeWriter {
-    fn new(sender: Sender<Vec<u8>>, buffer_size: usize) -> Self {
-        PipeWriter {
-            sender,
-            buffer_size,
+    /// Wrap a final sink writer with each codec in `codecs`. The slice is
+    /// laid out innermost → outermost in archive-layer terms, so the
+    /// outermost codec must wrap the sink first (it sits closest to the
+    /// file on the write path) and the innermost codec wraps last (it's
+    /// closest to the payload).
+    ///
+    /// Returned `StreamWriter` is the innermost layer; writing through it
+    /// cascades outward to `sink`, and calling `finish` finalizes every
+    /// layer in sequence.
+    fn build_encoder_chain(
+        codecs: &[Box<dyn Compressor>],
+        sink: Box<dyn Write + Send>,
+    ) -> Result<Box<dyn StreamWriter>> {
+        let mut chain: Box<dyn StreamWriter> = Box::new(PassthroughWriter(sink));
+        for stage in codecs.iter().rev() {
+            let codec = stage
+                .as_stream_codec()
+                .expect("split_chain guarantees stream codecs in this slice");
+            chain = codec.encoder(chain)?;
         }
+        Ok(chain)
+    }
+
+    /// Wrap a source reader with each codec's decoder in outermost → innermost
+    /// order — i.e. the reverse of compression order, since decoding peels
+    /// layers from the outside in. The resulting `Read` yields the
+    /// fully-decoded byte stream.
+    fn build_decoder_chain(
+        codecs: &[Box<dyn Compressor>],
+        source: Box<dyn Read + Send>,
+    ) -> Result<Box<dyn Read + Send>> {
+        let mut chain = source;
+        for stage in codecs.iter().rev() {
+            let codec = stage
+                .as_stream_codec()
+                .expect("split_chain guarantees stream codecs in this slice");
+            chain = codec.decoder(chain)?;
+        }
+        Ok(chain)
     }
 }
 
-impl Write for PipeWriter {
+/// A `Write` that owns a `StreamWriter` chain and finalizes it on Drop,
+/// stashing any finish error in a shared slot. The pipeline reads the slot
+/// after the container's `compress` returns to surface finalize errors.
+///
+/// This pattern exists because the `Compressor::compress` API hands a
+/// `Box<dyn Write + Send>` to the container; the container owns the box for
+/// the duration of its work and drops it when it returns. Drop is the only
+/// hook we have to drive the cascade-finalize without changing that API.
+struct FinalizeOnDrop {
+    inner: Option<Box<dyn StreamWriter>>,
+    slot: Arc<Mutex<Option<io::Result<()>>>>,
+}
+
+impl Write for FinalizeOnDrop {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        // Split the input into chunks of buffer_size
-        let mut start = 0;
-        while start < buf.len() {
-            let end = (start + self.buffer_size).min(buf.len());
-            let chunk = Vec::from(&buf[start..end]);
-
-            // Send the chunk through the channel
-            if self.sender.send(chunk).is_err() {
-                // If the receiver is gone, report an error
-                return Err(io::Error::new(
-                    io::ErrorKind::BrokenPipe,
-                    "Pipe receiver has been closed",
-                ));
-            }
-            start = end;
-        }
-        Ok(buf.len())
+        self.inner
+            .as_mut()
+            .expect("inner taken before drop")
+            .write(buf)
     }
-
     fn flush(&mut self) -> io::Result<()> {
-        // No need to flush, the channel sends immediately
-        Ok(())
+        self.inner
+            .as_mut()
+            .expect("inner taken before drop")
+            .flush()
     }
 }
 
-impl Drop for PipeWriter {
+impl Drop for FinalizeOnDrop {
     fn drop(&mut self) {
-        // Send an empty buffer to signal EOF
-        let _ = self.sender.send(Vec::new());
+        if let Some(inner) = self.inner.take() {
+            *self.slot.lock().unwrap() = Some(inner.finish());
+        }
+    }
+}
+
+/// Open the original sink writer for the user-supplied `CmprssOutput`. We
+/// don't reuse `prepare_output` here because it returns the writer alongside
+/// an `OutputTarget` for progress, which the pipeline doesn't drive
+/// directly — single-codec stages still report progress via their own
+/// `Compressor::compress` paths when invoked outside the pipeline.
+fn open_sink(output: CmprssOutput) -> Result<Box<dyn Write + Send>> {
+    use std::fs::File;
+    use std::io::BufWriter;
+    match output {
+        CmprssOutput::Writer(WriteWrapper(w)) => Ok(w),
+        CmprssOutput::Pipe(stdout) => Ok(Box::new(BufWriter::new(stdout))),
+        CmprssOutput::Path(path) => Ok(Box::new(BufWriter::new(File::create(path)?))),
+    }
+}
+
+/// Open the original source reader for the user-supplied `CmprssInput`. For
+/// path inputs we require exactly one file (single-stream codecs don't accept
+/// multiple inputs); container-led extracts route through `input` unchanged
+/// before this is called, so directory inputs never reach here.
+fn open_source(input: CmprssInput, name: &str) -> Result<Box<dyn Read + Send>> {
+    use std::fs::File;
+    use std::io::BufReader;
+    match input {
+        CmprssInput::Path(paths) => {
+            if paths.len() != 1 {
+                bail!("{name} expects a single input file");
+            }
+            if paths[0].is_dir() {
+                bail!("{name} does not operate on directories");
+            }
+            Ok(Box::new(BufReader::new(File::open(&paths[0])?)))
+        }
+        CmprssInput::Pipe(stdin) => Ok(Box::new(BufReader::new(stdin))),
+        CmprssInput::Reader(ReadWrapper(r)) => Ok(r),
     }
 }
 
@@ -279,12 +269,38 @@ impl Compressor for Pipeline {
         if self.compressors.len() == 1 {
             return self.compressors[0].compress(input, output);
         }
-        // Innermost → outermost: the outermost compressor runs on the main
-        // thread and writes to the user-supplied output.
-        let stages = self.compressors.iter().map(|c| c.clone_boxed()).collect();
-        Self::run_threaded(stages, input, StageAction::Compress, |last, input| {
-            last.compress(input, output)
-        })
+        let (container, codecs) = self.split_chain()?;
+        let sink = open_sink(output)?;
+        let chain = Self::build_encoder_chain(codecs, sink)?;
+
+        match container {
+            Some(c) => {
+                // Hand the container a writer that finalizes the codec chain
+                // when it goes out of scope (i.e. when the container's
+                // compress returns), and surface any finalize error.
+                let slot = Arc::new(Mutex::new(None));
+                let handle = FinalizeOnDrop {
+                    inner: Some(chain),
+                    slot: slot.clone(),
+                };
+                c.compress(input, CmprssOutput::Writer(WriteWrapper(Box::new(handle))))?;
+                if let Some(result) = slot.lock().unwrap().take() {
+                    result?;
+                } else {
+                    bail!("pipeline finalize never fired: container retained the writer");
+                }
+                Ok(())
+            }
+            None => {
+                // All-codec chain: copy raw input bytes through the wrapped
+                // writer, then finalize.
+                let mut reader = open_source(input, self.name())?;
+                let mut chain = chain;
+                io::copy(&mut reader, &mut chain)?;
+                chain.finish()?;
+                Ok(())
+            }
+        }
     }
 
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
@@ -292,31 +308,38 @@ impl Compressor for Pipeline {
         if self.compressors.len() == 1 {
             return self.compressors[0].extract(input, output);
         }
-        // Outermost → innermost: the innermost extractor (typically the
-        // container format like tar/zip) runs on the main thread so it can
-        // unpack into the user-supplied output.
-        let stages = self
-            .compressors
-            .iter()
-            .rev()
-            .map(|c| c.clone_boxed())
-            .collect();
-        Self::run_threaded(stages, input, StageAction::Extract, |last, input| {
-            let final_output = match output {
-                CmprssOutput::Path(ref p) => {
-                    // If the innermost extractor wants a directory and the
-                    // user's output path doesn't exist yet, create it so
-                    // e.g. tar::unpack has somewhere to write.
-                    if last.default_extracted_target() == ExtractedTarget::Directory && !p.exists()
-                    {
-                        std::fs::create_dir_all(p)?;
+        let (container, codecs) = self.split_chain()?;
+        let source = open_source(input, self.name())?;
+        let chain = Self::build_decoder_chain(codecs, source)?;
+
+        match container {
+            Some(c) => {
+                // The innermost container reads decoded bytes from the chain
+                // and unpacks to the user-supplied output. If the output is a
+                // directory path that doesn't exist, create it so that e.g.
+                // `tar::unpack` has somewhere to write.
+                let final_output = match output {
+                    CmprssOutput::Path(ref p) => {
+                        if c.default_extracted_target() == ExtractedTarget::Directory
+                            && !p.exists()
+                        {
+                            std::fs::create_dir_all(p)?;
+                        }
+                        CmprssOutput::Path(p.clone())
                     }
-                    CmprssOutput::Path(p.clone())
-                }
-                CmprssOutput::Pipe(_) | CmprssOutput::Writer(_) => output,
-            };
-            last.extract(input, final_output)
-        })
+                    CmprssOutput::Pipe(_) | CmprssOutput::Writer(_) => output,
+                };
+                c.extract(CmprssInput::Reader(ReadWrapper(chain)), final_output)
+            }
+            None => {
+                // All-codec chain: copy decoded bytes to the output sink.
+                let mut sink = open_sink(output)?;
+                let mut chain = chain;
+                io::copy(&mut chain, &mut sink)?;
+                sink.flush()?;
+                Ok(())
+            }
+        }
     }
 
     fn append(&self, input: CmprssInput, output: CmprssOutput) -> Result {
@@ -337,19 +360,16 @@ impl Compressor for Pipeline {
         if self.compressors.len() == 1 {
             return self.compressors[0].list(input);
         }
-        // Same plumbing as `extract`, except the innermost compressor lists
-        // its entries to stdout instead of unpacking. Outer layers still
-        // decompress into the in-memory pipe so the innermost container sees
-        // plain archive bytes.
-        let stages = self
-            .compressors
-            .iter()
-            .rev()
-            .map(|c| c.clone_boxed())
-            .collect();
-        Self::run_threaded(stages, input, StageAction::Extract, |innermost, input| {
-            innermost.list(input)
-        })
+        let (container, codecs) = self.split_chain()?;
+        let source = open_source(input, self.name())?;
+        let chain = Self::build_decoder_chain(codecs, source)?;
+        match container {
+            Some(c) => c.list(CmprssInput::Reader(ReadWrapper(chain))),
+            None => Err(anyhow!(
+                "{} archives cannot be listed; only container formats (tar, zip) support --list",
+                self.format_chain()
+            )),
+        }
     }
 }
 
@@ -398,9 +418,11 @@ mod tests {
 
     /// Regression test: per-stage configuration (e.g. `--level 1` vs
     /// `--level 9` on the outer gzip of a `.tar.gz`) must survive the
-    /// thread-dispatch in `Pipeline::compress`. Previously the pipeline
-    /// reconstructed each stage from its *name* alone, producing a default
-    /// Gzip regardless of the level the user requested.
+    /// composition in `Pipeline::compress`. Earlier the pipeline reconstructed
+    /// each stage from its *name* alone, producing a default Gzip regardless
+    /// of the level the user requested; the StreamCodec rewrite uses the
+    /// per-stage config directly, so this test guards against regressions in
+    /// either direction.
     #[test]
     fn test_pipeline_preserves_stage_config() -> Result {
         use crate::progress::ProgressArgs;
@@ -432,6 +454,38 @@ mod tests {
             best_size < fast_size,
             "expected best (level 9) to be smaller than fast (level 1), got {best_size} >= {fast_size}",
         );
+
+        Ok(())
+    }
+
+    /// A multi-codec chain (no container) should still round-trip cleanly:
+    /// raw bytes → gz → xz → file, then file → xz → gz → raw bytes.
+    #[test]
+    fn test_pipeline_codec_only_roundtrip() -> Result {
+        let temp_dir = tempdir()?;
+        let input = temp_dir.path().join("input.bin");
+        let payload: Vec<u8> = (0u8..=255).cycle().take(64 * 1024).collect();
+        fs::write(&input, &payload)?;
+
+        let pipeline = Pipeline::new(vec![
+            Box::new(crate::backends::Gzip::default()),
+            Box::new(crate::backends::Xz::default()),
+        ]);
+
+        let archive = temp_dir.path().join("input.bin.gz.xz");
+        pipeline.compress(
+            CmprssInput::Path(vec![input.clone()]),
+            CmprssOutput::Path(archive.clone()),
+        )?;
+        assert!(archive.exists());
+
+        let extracted = temp_dir.path().join("input.bin.recovered");
+        pipeline.extract(
+            CmprssInput::Path(vec![archive.clone()]),
+            CmprssOutput::Path(extracted.clone()),
+        )?;
+        let recovered = fs::read(&extracted)?;
+        assert_eq!(recovered, payload);
 
         Ok(())
     }
