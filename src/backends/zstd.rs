@@ -1,9 +1,11 @@
 use super::stream::{copy_stream, guard_file_output, open_input, prepare_output};
 use crate::progress::ProgressArgs;
 use crate::utils::{
-    CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor, LevelArgs, Result,
+    CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor, LevelArgs,
+    Result, StreamCodec, StreamWriter,
 };
 use clap::Args;
+use std::io::{self, Read, Write};
 use zstd::stream::{read::Decoder, write::Encoder};
 
 /// Zstd-specific compression validator (-7 to 22 range)
@@ -68,6 +70,40 @@ impl Zstd {
     }
 }
 
+struct ZstdStreamEncoder(Encoder<'static, Box<dyn StreamWriter>>);
+
+impl Write for ZstdStreamEncoder {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
+impl StreamWriter for ZstdStreamEncoder {
+    fn finish(self: Box<Self>) -> io::Result<()> {
+        // zstd::stream::write::Encoder is one of the encoders that DOES lose
+        // data on Drop — finish() is mandatory. It returns the inner writer
+        // after writing the trailer.
+        let inner = (*self).0.finish()?;
+        inner.finish()
+    }
+}
+
+impl StreamCodec for Zstd {
+    fn encoder(&self, inner: Box<dyn StreamWriter>) -> io::Result<Box<dyn StreamWriter>> {
+        Ok(Box::new(ZstdStreamEncoder(Encoder::new(
+            inner,
+            self.compression_level,
+        )?)))
+    }
+
+    fn decoder(&self, inner: Box<dyn Read + Send>) -> io::Result<Box<dyn Read + Send>> {
+        Ok(Box::new(Decoder::new(inner)?))
+    }
+}
+
 impl Compressor for Zstd {
     /// The standard extension for the zstd format.
     fn extension(&self) -> &str {
@@ -77,6 +113,10 @@ impl Compressor for Zstd {
     /// Full name for zstd.
     fn name(&self) -> &str {
         "zstd"
+    }
+
+    fn as_stream_codec(&self) -> Option<&dyn StreamCodec> {
+        Some(self)
     }
 
     /// Compress an input file or pipe to a zstd archive
