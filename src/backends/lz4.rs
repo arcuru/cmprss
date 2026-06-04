@@ -1,8 +1,11 @@
 use super::stream::{copy_stream, guard_file_output, open_input, prepare_output};
 use crate::progress::ProgressArgs;
-use crate::utils::{CmprssInput, CmprssOutput, CommonArgs, Compressor, Result};
+use crate::utils::{
+    CmprssInput, CmprssOutput, CommonArgs, Compressor, Result, StreamCodec, StreamWriter,
+};
 use clap::Args;
 use lz4_flex::frame::{FrameDecoder, FrameEncoder};
+use std::io::{self, Read, Write};
 
 #[derive(Args, Debug)]
 pub struct Lz4Args {
@@ -26,6 +29,36 @@ impl Lz4 {
     }
 }
 
+struct Lz4StreamEncoder(FrameEncoder<Box<dyn StreamWriter>>);
+
+impl Write for Lz4StreamEncoder {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
+impl StreamWriter for Lz4StreamEncoder {
+    fn finish(self: Box<Self>) -> io::Result<()> {
+        // FrameEncoder::finish returns lz4_flex::frame::Error, which converts
+        // cleanly to io::Error.
+        let inner = (*self).0.finish().map_err(io::Error::from)?;
+        inner.finish()
+    }
+}
+
+impl StreamCodec for Lz4 {
+    fn encoder(&self, inner: Box<dyn StreamWriter>) -> io::Result<Box<dyn StreamWriter>> {
+        Ok(Box::new(Lz4StreamEncoder(FrameEncoder::new(inner))))
+    }
+
+    fn decoder(&self, inner: Box<dyn Read + Send>) -> io::Result<Box<dyn Read + Send>> {
+        Ok(Box::new(FrameDecoder::new(inner)))
+    }
+}
+
 impl Compressor for Lz4 {
     /// The standard extension for the lz4 format.
     fn extension(&self) -> &str {
@@ -35,6 +68,10 @@ impl Compressor for Lz4 {
     /// Full name for lz4.
     fn name(&self) -> &str {
         "lz4"
+    }
+
+    fn as_stream_codec(&self) -> Option<&dyn StreamCodec> {
+        Some(self)
     }
 
     /// Compress an input file or pipe to a lz4 archive
