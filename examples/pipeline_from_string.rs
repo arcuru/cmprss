@@ -7,12 +7,10 @@
 //! cargo run --example pipeline_from_string -- tar.gz some_dir output.tar.gz
 //! ```
 //!
-//! `chain_from_format_str` is the same lookup the CLI uses for codec-only
-//! positional invocations. It returns the codecs in
-//! innermost → outermost order, ready to feed straight into
-//! [`Pipeline::with_format`].
+//! `Pipeline::from_format_str` mirrors the CLI's codec-only positional
+//! inference: hand it a string, get back a ready-to-run pipeline.
 
-use cmprss::{CmprssInput, CmprssOutput, Compressor, Pipeline, Result, chain_from_format_str};
+use cmprss::{CmprssInput, CmprssOutput, Compressor, Pipeline, Result};
 use std::path::PathBuf;
 
 fn main() -> Result {
@@ -29,9 +27,8 @@ fn main() -> Result {
         .expect("usage: pipeline_from_string <format> <input> <output>")
         .into();
 
-    let chain = chain_from_format_str(&format)
+    let pipeline = Pipeline::from_format_str(&format)
         .unwrap_or_else(|| panic!("unknown format string: {format:?}"));
-    let pipeline = Pipeline::with_format(chain, format);
 
     pipeline.compress(CmprssInput::Path(vec![input]), CmprssOutput::Path(output))
 }

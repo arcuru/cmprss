@@ -60,15 +60,16 @@
 //! # Ok(()) }
 //! ```
 //!
-//! Or let [`chain_from_format_str`] turn a dotted string into the same chain:
+//! Or let [`Pipeline::from_format_str`] turn a dotted string into the same
+//! chain (this is the same lookup the CLI uses for codec-only positional
+//! invocations):
 //!
 //! ```no_run
 //! # #[cfg(all(feature = "tar", feature = "gzip"))]
 //! # fn run() -> cmprss::Result {
-//! use cmprss::{CmprssInput, CmprssOutput, Compressor, Pipeline, chain_from_format_str};
+//! use cmprss::{CmprssInput, CmprssOutput, Compressor, Pipeline};
 //!
-//! let chain = chain_from_format_str("tgz").expect("known format");
-//! let pipeline = Pipeline::with_format(chain, "tgz".to_string());
+//! let pipeline = Pipeline::from_format_str("tgz").expect("known format");
 //! pipeline.compress(
 //!     CmprssInput::Path(vec!["my_dir".into()]),
 //!     CmprssOutput::Path("my_dir.tgz".into()),
