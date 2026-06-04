@@ -189,6 +189,60 @@ impl<T: Compressor + Clone + 'static> CompressorClone for T {
     }
 }
 
+/// A finalizable `Write` wrapper used to chain encoders in a pipeline.
+///
+/// Why this trait exists at all: most encoders write a trailer / closing block
+/// when finalized, and some upstream encoders (notably `zstd::stream::Encoder`)
+/// silently lose data if dropped without `.finish()`. Erasing them behind
+/// `Box<dyn Write>` would lose the ability to call the codec-specific finish
+/// method, so we expose one uniformly via this trait.
+///
+/// The terminal sink (a file, stdout, an in-memory buffer) is lifted into a
+/// `StreamWriter` via [`PassthroughWriter`]; each subsequent codec wraps the
+/// previous `StreamWriter` via [`StreamCodec::encoder`]. Finalization cascades:
+/// finishing the outermost layer finalizes that codec, then calls finish on
+/// the inner `StreamWriter`, all the way down to the passthrough.
+pub trait StreamWriter: Write + Send {
+    /// Finalize this layer (writing any trailer / closing block) and then
+    /// cascade-finalize the inner layer. After this returns `Ok`, every
+    /// wrapped writer has been fully finalized and dropped.
+    fn finish(self: Box<Self>) -> io::Result<()>;
+}
+
+/// A streaming codec: a configuration that knows how to wrap a `Write` with an
+/// encoder or a `Read` with a decoder. Containers (tar, zip, sevenz) do not
+/// implement this — they manage their own entry-by-entry I/O and stay on
+/// [`Compressor`] only.
+///
+/// This is the seam that lets `Pipeline` compose stages as decorators
+/// (innermost → outermost wrapping the output writer; outermost → innermost
+/// wrapping the input reader) on a single thread, the same way
+/// `async-compression`'s encoders/decoders compose asynchronously.
+pub trait StreamCodec: Send + Sync {
+    fn encoder(&self, inner: Box<dyn StreamWriter>) -> io::Result<Box<dyn StreamWriter>>;
+    fn decoder(&self, inner: Box<dyn Read + Send>) -> io::Result<Box<dyn Read + Send>>;
+}
+
+/// Lift a bare `Write` into a `StreamWriter` whose finalize is just a flush.
+/// This sits at the bottom of an encoder cascade — the user's actual output
+/// sink (file, stdout, in-memory buffer).
+pub struct PassthroughWriter<W: Write + Send>(pub W);
+
+impl<W: Write + Send> Write for PassthroughWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
+impl<W: Write + Send> StreamWriter for PassthroughWriter<W> {
+    fn finish(mut self: Box<Self>) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
 /// Common interface for all compressor implementations
 pub trait Compressor: CompressorClone + Send + Sync {
     /// Name of this Compressor
@@ -273,6 +327,14 @@ pub trait Compressor: CompressorClone + Send + Sync {
             "{} archives cannot be listed; only container formats (tar, zip) support --list",
             self.name()
         )
+    }
+
+    /// If this compressor is a single-stream codec, return it as a
+    /// `&dyn StreamCodec` so the pipeline can compose stages as decorators
+    /// instead of running each stage in its own thread. Container formats
+    /// (tar, zip, sevenz) leave this as `None`.
+    fn as_stream_codec(&self) -> Option<&dyn StreamCodec> {
+        None
     }
 }
 
