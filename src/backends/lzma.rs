@@ -109,7 +109,7 @@ impl StreamCodec for Lzma {
     fn encoder(&self, inner: Box<dyn StreamWriter>) -> io::Result<Box<dyn StreamWriter>> {
         let stream = self
             .encoder_stream()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            .map_err(io::Error::other)?;
         Ok(Box::new(LzmaStreamEncoder(XzEncoder::new_stream(
             inner, stream,
         ))))
@@ -117,7 +117,7 @@ impl StreamCodec for Lzma {
 
     fn decoder(&self, inner: Box<dyn Read + Send>) -> io::Result<Box<dyn Read + Send>> {
         let stream =
-            Self::decoder_stream().map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            Self::decoder_stream().map_err(io::Error::other)?;
         Ok(Box::new(XzDecoder::new_stream(inner, stream)))
     }
 }

@@ -1,15 +1,11 @@
-pub mod backends;
-mod job;
-pub mod progress;
-#[cfg(test)]
-pub mod test_utils;
-pub mod utils;
-
-use backends::*;
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
-use job::{Action, get_job};
-use utils::*;
+use cmprss::job::{Action, get_job};
+use cmprss::{
+    Brotli, BrotliArgs, Bzip2, Bzip2Args, CommonArgs, Compressor, Gzip, GzipArgs, Lz4, Lz4Args,
+    Lzma, LzmaArgs, Pipeline, Result, SevenZ, SevenZArgs, Snappy, SnappyArgs, Tar, TarArgs, Xz,
+    XzArgs, Zip, ZipArgs, Zstd, ZstdArgs, chain_from_format_str,
+};
 
 /// A compression multi-tool
 #[derive(Parser, Debug)]

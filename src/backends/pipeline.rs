@@ -30,6 +30,9 @@ pub struct Pipeline {
     format_override: Option<String>,
 }
 
+/// `(innermost_container, surrounding_codecs)` split of a pipeline chain.
+type SplitChain<'a> = (Option<&'a dyn Compressor>, &'a [Box<dyn Compressor>]);
+
 impl Clone for Pipeline {
     fn clone(&self) -> Self {
         Pipeline {
@@ -72,7 +75,7 @@ impl Pipeline {
     /// Split the chain into an optional innermost container and the surrounding
     /// stream codecs. Bails if any non-innermost stage is a container, since
     /// "tar inside gzip outside tar" makes no sense as a composition.
-    fn split_chain(&self) -> Result<(Option<&dyn Compressor>, &[Box<dyn Compressor>])> {
+    fn split_chain(&self) -> Result<SplitChain<'_>> {
         debug_assert!(!self.compressors.is_empty(), "pipeline is never empty");
         let first = self.compressors[0].as_ref();
         let (container, codecs) = if first.as_stream_codec().is_none() {
