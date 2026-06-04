@@ -297,6 +297,16 @@ impl Compressor for Pipeline {
             None => {
                 // All-codec chain: copy raw input bytes through the wrapped
                 // writer, then finalize.
+                //
+                // TODO(progress): codec-only chains (e.g. `.gz.xz`) do bare
+                // `io::copy` here. The single-codec path uses
+                // `copy_with_progress`; for parity, Pipeline would need to
+                // route a `ProgressArgs` through (it currently has none of
+                // its own — every per-stage `progress_args` field is on the
+                // codec struct and is only consulted by the single-codec
+                // `Compressor::compress` delegation). Container chains
+                // (`tar.gz`) are fine because the container drives its own
+                // progress.
                 let mut reader = open_source(input, self.name())?;
                 let mut chain = chain;
                 io::copy(&mut reader, &mut chain)?;
@@ -336,6 +346,7 @@ impl Compressor for Pipeline {
             }
             None => {
                 // All-codec chain: copy decoded bytes to the output sink.
+                // See the TODO(progress) in compress() — same omission here.
                 let mut sink = open_sink(output)?;
                 let mut chain = chain;
                 io::copy(&mut chain, &mut sink)?;
