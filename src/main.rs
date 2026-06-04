@@ -1,7 +1,7 @@
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 use cmprss::job::{Action, get_job};
-use cmprss::{CommonArgs, Compressor, Pipeline, Result, chain_from_format_str};
+use cmprss::{CommonArgs, Compressor, Pipeline, Result};
 
 #[cfg(feature = "brotli")]
 use cmprss::{Brotli, BrotliArgs};
@@ -114,12 +114,9 @@ fn take_format_prefix(args: &mut CommonArgs) -> Option<Box<dyn Compressor>> {
     if std::path::Path::new(first).exists() {
         return None;
     }
-    let chain = chain_from_format_str(first)?;
-    let format = first.clone();
+    let pipeline = Pipeline::from_format_str(first)?.with_progress_args(args.progress_args);
     args.io_list.remove(0);
-    Some(Box::new(
-        Pipeline::with_format(chain, format).with_progress_args(args.progress_args),
-    ))
+    Some(Box::new(pipeline))
 }
 
 fn write_completions(shell: Shell) -> Result {

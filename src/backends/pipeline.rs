@@ -71,6 +71,19 @@ impl Pipeline {
         }
     }
 
+    /// Resolve a dotted format string (e.g. `"tar.gz"`, `"tgz"`) into a ready
+    /// Pipeline, preserving `format` as the canonical format string for
+    /// default output filenames. Returns `None` if any segment of the format
+    /// string isn't a known codec or compound shortcut.
+    ///
+    /// Equivalent to `chain_from_format_str(format).map(|c| Pipeline::with_format(c, format.to_string()))`
+    /// — the most common entry point for library callers that want to mirror
+    /// the CLI's positional-format inference.
+    pub fn from_format_str(format: &str) -> Option<Self> {
+        let chain = super::chain_from_format_str(format)?;
+        Some(Self::with_format(chain, format.to_string()))
+    }
+
     /// Attach a progress configuration to this pipeline. Used by the CLI to
     /// thread the shared `--progress` / `--chunk-size` flags through to the
     /// codec-only copy path; if unset, the pipeline falls back to the
