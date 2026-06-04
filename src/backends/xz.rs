@@ -3,10 +3,11 @@ use crate::{
     progress::ProgressArgs,
     utils::{
         CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
-        DefaultCompressionValidator, LevelArgs, Result,
+        DefaultCompressionValidator, LevelArgs, Result, StreamCodec, StreamWriter,
     },
 };
 use clap::Args;
+use std::io::{self, Read, Write};
 use xz2::read::XzDecoder;
 use xz2::write::XzEncoder;
 
@@ -47,6 +48,37 @@ impl Xz {
     }
 }
 
+struct XzStreamEncoder(XzEncoder<Box<dyn StreamWriter>>);
+
+impl Write for XzStreamEncoder {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
+impl StreamWriter for XzStreamEncoder {
+    fn finish(self: Box<Self>) -> io::Result<()> {
+        let inner = (*self).0.finish()?;
+        inner.finish()
+    }
+}
+
+impl StreamCodec for Xz {
+    fn encoder(&self, inner: Box<dyn StreamWriter>) -> io::Result<Box<dyn StreamWriter>> {
+        Ok(Box::new(XzStreamEncoder(XzEncoder::new(
+            inner,
+            self.level as u32,
+        ))))
+    }
+
+    fn decoder(&self, inner: Box<dyn Read + Send>) -> io::Result<Box<dyn Read + Send>> {
+        Ok(Box::new(XzDecoder::new(inner)))
+    }
+}
+
 impl Compressor for Xz {
     /// The standard extension for the xz format.
     fn extension(&self) -> &str {
@@ -56,6 +88,10 @@ impl Compressor for Xz {
     /// Full name for xz.
     fn name(&self) -> &str {
         "xz"
+    }
+
+    fn as_stream_codec(&self) -> Option<&dyn StreamCodec> {
+        Some(self)
     }
 
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
