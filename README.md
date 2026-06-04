@@ -195,6 +195,53 @@ cmprss gzip --extract directory.tar.gz | cmprss tar -e new_directory
 cmprss tar directory_1/ directory_2/ | cmprss gzip | cmprss gzip -e | cmprss tar -e new_directory
 ```
 
+## Using as a library
+
+`cmprss` is published to crates.io as both a binary and a library. The same codecs, the streaming traits, and the pipeline composer the CLI uses are all available to other Rust code:
+
+```toml
+[dependencies]
+cmprss = "0.4"
+```
+
+The most common patterns:
+
+```rust
+use cmprss::{CmprssInput, CmprssOutput, Compressor, Gzip, Pipeline};
+
+// Single codec — set whichever fields you care about, default the rest.
+let gz = Gzip { compression_level: 9, ..Gzip::default() };
+gz.compress(
+    CmprssInput::Path(vec!["input.txt".into()]),
+    CmprssOutput::Path("input.txt.gz".into()),
+)?;
+
+// Compound formats from a string (same lookup the CLI uses).
+let pipeline = Pipeline::from_format_str("tar.gz").expect("known format");
+pipeline.compress(
+    CmprssInput::Path(vec!["my_dir".into()]),
+    CmprssOutput::Path("my_dir.tar.gz".into()),
+)?;
+```
+
+Worked runnables for each pattern live under [`examples/`](./examples/) and run via `cargo run --example <name>`. The full API is documented at <https://docs.rs/cmprss>.
+
+### Cargo features
+
+Each codec is gated behind a feature of the same name (`gzip`, `xz`, `bzip2`, `zstd`, `lz4`, `brotli`, `snappy`, `lzma`, `tar`, `zip`, `sevenz`). The aggregate `full` feature enables them all. Disable default features and opt back in to a subset to shrink the dependency tree:
+
+```toml
+cmprss = { version = "0.4", default-features = false, features = ["gzip", "tar"] }
+```
+
+The entire CLI surface (clap-derived `XArgs` structs, `X::new(args)` constructors, `CommonArgs`, `LevelArgs`, the `job` dispatch module, and the `clap` / `clap_complete` / `clap_mangen` deps that back them) lives behind a `cli` feature, on by default. Library consumers who don't want clap in their tree can drop it:
+
+```toml
+cmprss = { version = "0.4", default-features = false, features = ["full"] }
+```
+
+Construct codecs via `Default::default()` plus the public fields on each codec struct — the integration tests under `tests/` and the runnables under `examples/` show both styles.
+
 ## Contributing
 
 ### Development Environment
