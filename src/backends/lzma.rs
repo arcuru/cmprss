@@ -1,4 +1,4 @@
-use super::stream::{copy_stream, guard_file_output, open_input, prepare_output};
+use super::stream::{stream_compress, stream_extract};
 use crate::{
     progress::ProgressArgs,
     utils::{
@@ -15,23 +15,6 @@ use xz2::write::XzEncoder;
 /// Memory limit passed to the LZMA decoder. `u64::MAX` disables the limit,
 /// which matches the behavior of `xz --lzma1 -d` / `unlzma`.
 const LZMA_DECODER_MEMLIMIT: u64 = u64::MAX;
-
-/// Swallows `flush()` calls on the wrapped writer. The legacy LZMA1
-/// (`lzma_alone`) encoder in liblzma rejects `LZMA_FULL_FLUSH`, which is what
-/// the inner `XzEncoder::flush` issues, so progress/copy helpers that call
-/// `flush` mid-stream must see a no-op flush and let `try_finish` (via Drop
-/// or `finish()`) finalize the stream instead.
-struct NoFlush<W>(W);
-
-impl<W: Write> Write for NoFlush<W> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.write(buf)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
 
 #[derive(Args, Debug)]
 pub struct LzmaArgs {
@@ -138,40 +121,11 @@ impl Compressor for Lzma {
     }
 
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        guard_file_output(&output, "LZMA")?;
-        let (input_stream, file_size, pipeline_inner) = open_input(input, "LZMA")?;
-        let (writer, target) = prepare_output(output)?;
-        let mut encoder = XzEncoder::new_stream(writer, self.encoder_stream()?);
-        // `copy_stream` flushes the final writer on the path/pipe branch via
-        // `copy_with_progress`; LZMA1 (`lzma_alone`) rejects mid-stream flush,
-        // so wrap the encoder to swallow those calls and let `try_finish`
-        // finalize the stream.
-        copy_stream(
-            input_stream,
-            NoFlush(&mut encoder),
-            file_size,
-            pipeline_inner,
-            &self.progress_args,
-            target,
-        )?;
-        encoder.try_finish()?;
-        Ok(())
+        stream_compress(self, "LZMA", input, output, &self.progress_args)
     }
 
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        guard_file_output(&output, "LZMA")?;
-        let (input_stream, file_size, pipeline_inner) = open_input(input, "LZMA")?;
-        let decoder = XzDecoder::new_stream(input_stream, Self::decoder_stream()?);
-        let (writer, target) = prepare_output(output)?;
-        copy_stream(
-            decoder,
-            writer,
-            file_size,
-            pipeline_inner,
-            &self.progress_args,
-            target,
-        )?;
-        Ok(())
+        stream_extract(self, "LZMA", input, output, &self.progress_args)
     }
 }
 
