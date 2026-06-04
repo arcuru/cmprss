@@ -1,4 +1,4 @@
-#![cfg(feature = "zstd")]
+#![cfg(all(feature = "zstd", feature = "cli"))]
 
 use assert_cmd::prelude::*;
 use assert_fs::prelude::*;

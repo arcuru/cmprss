@@ -1,4 +1,4 @@
-#![cfg(feature = "tar")]
+#![cfg(all(feature = "tar", feature = "cli"))]
 
 #[allow(dead_code)]
 mod compare {

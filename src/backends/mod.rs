@@ -36,28 +36,50 @@ mod zip;
 mod zstd;
 
 #[cfg(feature = "brotli")]
-pub use brotli::{Brotli, BrotliArgs};
+pub use brotli::Brotli;
+#[cfg(all(feature = "brotli", feature = "cli"))]
+pub use brotli::BrotliArgs;
 #[cfg(feature = "bzip2")]
-pub use bzip2::{Bzip2, Bzip2Args};
+pub use bzip2::Bzip2;
+#[cfg(all(feature = "bzip2", feature = "cli"))]
+pub use bzip2::Bzip2Args;
 #[cfg(feature = "gzip")]
-pub use gzip::{Gzip, GzipArgs};
+pub use gzip::Gzip;
+#[cfg(all(feature = "gzip", feature = "cli"))]
+pub use gzip::GzipArgs;
 #[cfg(feature = "lz4")]
-pub use lz4::{Lz4, Lz4Args};
+pub use lz4::Lz4;
+#[cfg(all(feature = "lz4", feature = "cli"))]
+pub use lz4::Lz4Args;
 #[cfg(feature = "lzma")]
-pub use lzma::{Lzma, LzmaArgs};
+pub use lzma::Lzma;
+#[cfg(all(feature = "lzma", feature = "cli"))]
+pub use lzma::LzmaArgs;
 pub use pipeline::Pipeline;
 #[cfg(feature = "sevenz")]
-pub use sevenz::{SevenZ, SevenZArgs};
+pub use sevenz::SevenZ;
+#[cfg(all(feature = "sevenz", feature = "cli"))]
+pub use sevenz::SevenZArgs;
 #[cfg(feature = "snappy")]
-pub use snappy::{Snappy, SnappyArgs};
+pub use snappy::Snappy;
+#[cfg(all(feature = "snappy", feature = "cli"))]
+pub use snappy::SnappyArgs;
 #[cfg(feature = "tar")]
-pub use tar::{Tar, TarArgs};
+pub use tar::Tar;
+#[cfg(all(feature = "tar", feature = "cli"))]
+pub use tar::TarArgs;
 #[cfg(feature = "xz")]
-pub use xz::{Xz, XzArgs};
+pub use xz::Xz;
+#[cfg(all(feature = "xz", feature = "cli"))]
+pub use xz::XzArgs;
 #[cfg(feature = "zip")]
-pub use zip::{Zip, ZipArgs};
+pub use zip::Zip;
+#[cfg(all(feature = "zip", feature = "cli"))]
+pub use zip::ZipArgs;
 #[cfg(feature = "zstd")]
-pub use zstd::{Zstd, ZstdArgs};
+pub use zstd::Zstd;
+#[cfg(all(feature = "zstd", feature = "cli"))]
+pub use zstd::ZstdArgs;
 
 use crate::utils::Compressor;
 

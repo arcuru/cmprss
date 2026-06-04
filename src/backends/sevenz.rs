@@ -1,10 +1,13 @@
 use super::containers::total_input_bytes;
 use crate::progress::{OutputTarget, ProgressArgs, ProgressReader, create_progress_bar};
 use crate::utils::{
-    CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
-    DefaultCompressionValidator, ExtractedTarget, LevelArgs, Result,
+    CmprssInput, CmprssOutput, CompressionLevelValidator, Compressor, DefaultCompressionValidator,
+    ExtractedTarget, Result,
 };
+#[cfg(feature = "cli")]
+use crate::utils::{CommonArgs, LevelArgs};
 use anyhow::{anyhow, bail};
+#[cfg(feature = "cli")]
 use clap::Args;
 use indicatif::ProgressBar;
 use sevenz_rust2::{
@@ -15,6 +18,7 @@ use std::io::{self, Empty, Seek, SeekFrom, Write};
 use std::path::Path;
 use tempfile::tempfile;
 
+#[cfg(feature = "cli")]
 #[derive(Args, Debug)]
 pub struct SevenZArgs {
     #[clap(flatten)]
@@ -39,6 +43,7 @@ impl Default for SevenZ {
     }
 }
 
+#[cfg(feature = "cli")]
 impl SevenZ {
     pub fn new(args: &SevenZArgs) -> SevenZ {
         SevenZ {
@@ -46,7 +51,9 @@ impl SevenZ {
             progress_args: args.common_args.progress_args,
         }
     }
+}
 
+impl SevenZ {
     /// Extract a seekable 7z input with a byte-level progress bar keyed to
     /// the compressed archive size.
     fn decompress_seekable<R: io::Read + Seek>(

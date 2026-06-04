@@ -1,4 +1,5 @@
 use crate::progress::ProgressArgs;
+#[cfg(feature = "cli")]
 use clap::Args;
 use std::fmt;
 use std::io;
@@ -17,6 +18,10 @@ pub enum ExtractedTarget {
     Directory,
 }
 
+/// CLI parsing surface for the shared subcommand options. Only compiled with
+/// the `cli` feature; library callers construct compressors directly and
+/// don't need this.
+#[cfg(feature = "cli")]
 #[derive(Args, Debug)]
 pub struct CommonArgs {
     /// Input file/directory
@@ -160,6 +165,10 @@ impl FromStr for CompressionLevel {
     }
 }
 
+/// CLI parsing surface for the per-codec compression level flag. Only
+/// compiled with the `cli` feature; library callers set the level field on
+/// the codec directly.
+#[cfg(feature = "cli")]
 #[derive(Args, Debug, Default, Clone, Copy)]
 pub struct LevelArgs {
     /// Level of compression.
@@ -168,6 +177,7 @@ pub struct LevelArgs {
     pub level: CompressionLevel,
 }
 
+#[cfg(feature = "cli")]
 impl LevelArgs {
     /// Resolve the user-requested compression level against a codec-specific
     /// validator, clamping to the validator's range. This is the standard way

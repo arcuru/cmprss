@@ -13,11 +13,12 @@ categories = ["command-line-utilities", "compression"]
 
 [dependencies]
 anyhow = "1"
-clap = { version = "4", features = ["derive"] }
-clap_complete = "4"
-clap_mangen = "0.2"
 indicatif = "0.18"
 is-terminal = "0.4"
+
+clap = { version = "4", features = ["derive"], optional = true }
+clap_complete = { version = "4", optional = true }
+clap_mangen = { version = "0.2", optional = true }
 
 brotli = { version = "8", optional = true }
 bzip2 = { version = "0.6", features = ["static"], optional = true }
@@ -39,7 +40,13 @@ rand = "0.10"
 tempfile = "3"
 
 [features]
-default = ["full"]
+default = ["cli", "full"]
+
+# Command-line surface: clap parser, completion + manpage generation, and
+# every `XArgs` struct + `X::new(args)` constructor in the backends. Library
+# consumers can omit `cli` to drop clap from their dep tree and construct
+# codecs via `Default::default()` + public field setters instead.
+cli = ["dep:clap", "dep:clap_complete", "dep:clap_mangen"]
 
 # All codecs at once — what the published CLI ships with.
 full = [
@@ -71,6 +78,10 @@ snappy = ["dep:snap"]
 tar = ["dep:tar", "dep:tempfile"]
 zip = ["dep:zip", "dep:tempfile"]
 sevenz = ["dep:sevenz-rust2", "dep:tempfile"]
+
+[[bin]]
+name = "cmprss"
+required-features = ["cli"]
 
 [profile.dev.package."*"]
 opt-level = 3

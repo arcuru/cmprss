@@ -1,4 +1,4 @@
-#![cfg(feature = "bzip2")]
+#![cfg(all(feature = "bzip2", feature = "cli"))]
 
 use assert_cmd::prelude::*;
 use assert_fs::prelude::*;

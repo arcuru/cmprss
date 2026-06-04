@@ -1,16 +1,20 @@
 use super::stream::{stream_compress, stream_extract};
+#[cfg(feature = "cli")]
+use crate::utils::{CommonArgs, LevelArgs};
 use crate::{
     progress::ProgressArgs,
     utils::{
-        CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
-        DefaultCompressionValidator, LevelArgs, Result, StreamCodec, StreamWriter,
+        CmprssInput, CmprssOutput, CompressionLevelValidator, Compressor,
+        DefaultCompressionValidator, Result, StreamCodec, StreamWriter,
     },
 };
+#[cfg(feature = "cli")]
 use clap::Args;
 use std::io::{self, Read, Write};
 use xz2::read::XzDecoder;
 use xz2::write::XzEncoder;
 
+#[cfg(feature = "cli")]
 #[derive(Args, Debug)]
 pub struct XzArgs {
     #[clap(flatten)]
@@ -36,6 +40,7 @@ impl Default for Xz {
     }
 }
 
+#[cfg(feature = "cli")]
 impl Xz {
     pub fn new(args: &XzArgs) -> Xz {
         Xz {

@@ -1,4 +1,4 @@
-#![cfg(feature = "full")]
+#![cfg(all(feature = "full", feature = "cli"))]
 
 extern crate assert_cmd;
 extern crate assert_fs;

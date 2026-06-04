@@ -1,13 +1,16 @@
 use super::stream::{stream_compress, stream_extract};
+#[cfg(feature = "cli")]
+use crate::utils::{CommonArgs, LevelArgs};
 use crate::{
     progress::ProgressArgs,
     utils::{
-        CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor, LevelArgs,
-        Result, StreamCodec, StreamWriter,
+        CmprssInput, CmprssOutput, CompressionLevelValidator, Compressor, Result, StreamCodec,
+        StreamWriter,
     },
 };
 use bzip2::Compression;
 use bzip2::write::BzEncoder;
+#[cfg(feature = "cli")]
 use clap::Args;
 use std::io::{self, Read, Write};
 
@@ -35,6 +38,7 @@ impl CompressionLevelValidator for Bzip2CompressionValidator {
     }
 }
 
+#[cfg(feature = "cli")]
 #[derive(Args, Debug)]
 pub struct Bzip2Args {
     #[clap(flatten)]
@@ -60,6 +64,7 @@ impl Default for Bzip2 {
     }
 }
 
+#[cfg(feature = "cli")]
 impl Bzip2 {
     pub fn new(args: &Bzip2Args) -> Self {
         Bzip2 {

@@ -1,10 +1,13 @@
 use super::containers::total_input_bytes;
 use crate::progress::{OutputTarget, ProgressArgs, ProgressReader, create_progress_bar};
 use crate::utils::{
-    CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
-    DefaultCompressionValidator, ExtractedTarget, LevelArgs, Result,
+    CmprssInput, CmprssOutput, CompressionLevelValidator, Compressor, DefaultCompressionValidator,
+    ExtractedTarget, Result,
 };
+#[cfg(feature = "cli")]
+use crate::utils::{CommonArgs, LevelArgs};
 use anyhow::{anyhow, bail};
+#[cfg(feature = "cli")]
 use clap::Args;
 use indicatif::ProgressBar;
 use std::fs::{File, OpenOptions};
@@ -15,6 +18,7 @@ use zip::read::ZipArchive;
 use zip::write::FileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
+#[cfg(feature = "cli")]
 #[derive(Args, Debug)]
 pub struct ZipArgs {
     #[clap(flatten)]
@@ -39,6 +43,7 @@ impl Default for Zip {
     }
 }
 
+#[cfg(feature = "cli")]
 impl Zip {
     pub fn new(args: &ZipArgs) -> Zip {
         Zip {
@@ -46,7 +51,9 @@ impl Zip {
             progress_args: args.common_args.progress_args,
         }
     }
+}
 
+impl Zip {
     fn file_options(&self) -> FileOptions<'static, ()> {
         FileOptions::<()>::default()
             .compression_method(CompressionMethod::Deflated)
