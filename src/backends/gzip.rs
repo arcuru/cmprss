@@ -2,11 +2,12 @@ use super::stream::{copy_stream, guard_file_output, open_input, prepare_output};
 use crate::progress::ProgressArgs;
 use crate::utils::{
     CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
-    DefaultCompressionValidator, LevelArgs, Result,
+    DefaultCompressionValidator, LevelArgs, Result, StreamCodec, StreamWriter,
 };
 use clap::Args;
 use flate2::write::GzEncoder;
 use flate2::{Compression, read::GzDecoder};
+use std::io::{self, Read, Write};
 
 #[derive(Args, Debug)]
 pub struct GzipArgs {
@@ -45,6 +46,42 @@ impl Gzip {
     }
 }
 
+/// Streaming encoder wrapper: a `GzEncoder` writing into the next
+/// `StreamWriter` in the pipeline cascade. Boxed and returned from
+/// `<Gzip as StreamCodec>::encoder`.
+struct GzipStreamEncoder(GzEncoder<Box<dyn StreamWriter>>);
+
+impl Write for GzipStreamEncoder {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
+impl StreamWriter for GzipStreamEncoder {
+    fn finish(self: Box<Self>) -> io::Result<()> {
+        // GzEncoder::finish flushes the gzip trailer and returns the inner
+        // StreamWriter, which we then cascade-finalize.
+        let inner = (*self).0.finish()?;
+        inner.finish()
+    }
+}
+
+impl StreamCodec for Gzip {
+    fn encoder(&self, inner: Box<dyn StreamWriter>) -> io::Result<Box<dyn StreamWriter>> {
+        Ok(Box::new(GzipStreamEncoder(GzEncoder::new(
+            inner,
+            Compression::new(self.compression_level as u32),
+        ))))
+    }
+
+    fn decoder(&self, inner: Box<dyn Read + Send>) -> io::Result<Box<dyn Read + Send>> {
+        Ok(Box::new(GzDecoder::new(inner)))
+    }
+}
+
 impl Compressor for Gzip {
     /// The standard extension for the gzip format.
     fn extension(&self) -> &str {
@@ -54,6 +91,10 @@ impl Compressor for Gzip {
     /// Full name for gzip.
     fn name(&self) -> &str {
         "gzip"
+    }
+
+    fn as_stream_codec(&self) -> Option<&dyn StreamCodec> {
+        Some(self)
     }
 
     /// Compress an input file or pipe to a gzip archive
@@ -96,6 +137,7 @@ impl Compressor for Gzip {
 mod tests {
     use super::*;
     use crate::test_utils::*;
+    use crate::utils::PassthroughWriter;
     use std::fs;
     use std::io::{Read, Write};
     use tempfile::tempdir;
@@ -105,6 +147,50 @@ mod tests {
     fn test_gzip_interface() {
         let compressor = Gzip::default();
         test_compressor_interface(&compressor, "gzip", Some("gz"));
+    }
+
+    /// Exercise the StreamCodec path end-to-end: wrap a captured sink with
+    /// `encoder()`, write payload through the resulting `StreamWriter`, call
+    /// `finish` to flush the gzip trailer (and cascade-finalize the
+    /// passthrough), then round-trip the bytes back through `decoder()` and
+    /// verify. This is the seam Pipeline will use in a later step, so it
+    /// deserves a direct test independent of `compress`/`extract`.
+    #[test]
+    fn test_gzip_stream_codec_roundtrip() -> Result {
+        use std::sync::{Arc, Mutex};
+        // A Write that copies into a shared Vec, so we can read the encoded
+        // bytes back after Box<dyn StreamWriter> has consumed the original.
+        struct SharedSink(Arc<Mutex<Vec<u8>>>);
+        impl Write for SharedSink {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let codec = Gzip::default();
+        let payload = b"hello stream codec world".repeat(64);
+
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let passthrough: Box<dyn StreamWriter> =
+            Box::new(PassthroughWriter(SharedSink(captured.clone())));
+        let mut encoder = codec.encoder(passthrough)?;
+        encoder.write_all(&payload)?;
+        encoder.finish()?;
+
+        let encoded = captured.lock().unwrap().clone();
+        assert!(!encoded.is_empty(), "encoder produced no output");
+
+        let cursor: Box<dyn Read + Send> = Box::new(std::io::Cursor::new(encoded));
+        let mut decoder = codec.decoder(cursor)?;
+        let mut decoded = Vec::new();
+        decoder.read_to_end(&mut decoded)?;
+        assert_eq!(decoded, payload);
+
+        Ok(())
     }
 
     /// Test the default compression level
