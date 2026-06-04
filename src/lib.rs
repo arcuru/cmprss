@@ -22,9 +22,9 @@
 //!
 //! Each codec is gated behind a Cargo feature of the same name (`gzip`, `xz`,
 //! `bzip2`, `zstd`, `lz4`, `brotli`, `snappy`, `lzma`, `tar`, `zip`,
-//! `sevenz`). The aggregate `full` feature enables them all; that, plus
-//! `interop`, is the default. Disable default features and opt back in to a
-//! subset to shrink the dependency tree:
+//! `sevenz`). The aggregate `full` feature enables them all and is the
+//! default. Disable default features and opt back in to a subset to shrink
+//! the dependency tree:
 //!
 //! ```toml
 //! cmprss = { version = "0.4", default-features = false, features = ["gzip", "tar"] }
