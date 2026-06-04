@@ -41,9 +41,6 @@ pub struct Bzip2Args {
     pub common_args: CommonArgs,
 
     #[clap(flatten)]
-    pub progress_args: ProgressArgs,
-
-    #[clap(flatten)]
     pub level_args: LevelArgs,
 }
 
@@ -67,7 +64,7 @@ impl Bzip2 {
     pub fn new(args: &Bzip2Args) -> Self {
         Bzip2 {
             level: args.level_args.resolve(&Bzip2CompressionValidator),
-            progress_args: args.progress_args,
+            progress_args: args.common_args.progress_args,
         }
     }
 }

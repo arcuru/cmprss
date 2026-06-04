@@ -17,9 +17,6 @@ use crate::utils::{CmprssInput, CmprssOutput, CommonArgs, Compressor, ExtractedT
 pub struct TarArgs {
     #[clap(flatten)]
     pub common_args: CommonArgs,
-
-    #[clap(flatten)]
-    pub progress_args: ProgressArgs,
 }
 
 #[derive(Default, Clone)]
@@ -30,7 +27,7 @@ pub struct Tar {
 impl Tar {
     pub fn new(args: &TarArgs) -> Tar {
         Tar {
-            progress_args: args.progress_args,
+            progress_args: args.common_args.progress_args,
         }
     }
 }

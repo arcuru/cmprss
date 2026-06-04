@@ -48,9 +48,6 @@ pub struct BrotliArgs {
 
     #[clap(flatten)]
     pub level_args: LevelArgs,
-
-    #[clap(flatten)]
-    pub progress_args: ProgressArgs,
 }
 
 #[derive(Clone)]
@@ -73,7 +70,7 @@ impl Brotli {
     pub fn new(args: &BrotliArgs) -> Brotli {
         Brotli {
             compression_level: args.level_args.resolve(&BrotliCompressionValidator),
-            progress_args: args.progress_args,
+            progress_args: args.common_args.progress_args,
         }
     }
 }

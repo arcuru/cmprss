@@ -22,9 +22,6 @@ pub struct ZipArgs {
 
     #[clap(flatten)]
     pub level_args: LevelArgs,
-
-    #[clap(flatten)]
-    pub progress_args: ProgressArgs,
 }
 
 #[derive(Clone)]
@@ -46,7 +43,7 @@ impl Zip {
     pub fn new(args: &ZipArgs) -> Zip {
         Zip {
             compression_level: args.level_args.resolve(&DefaultCompressionValidator),
-            progress_args: args.progress_args,
+            progress_args: args.common_args.progress_args,
         }
     }
 
