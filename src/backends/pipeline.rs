@@ -1,7 +1,7 @@
 use crate::progress::{OutputTarget, copy_with_progress};
 use crate::utils::{
-    CmprssInput, CmprssOutput, Compressor, ExtractedTarget, PassthroughWriter, ReadWrapper,
-    Result, StreamWriter, WriteWrapper,
+    CmprssInput, CmprssOutput, Compressor, ExtractedTarget, PassthroughWriter, ReadWrapper, Result,
+    StreamWriter, WriteWrapper,
 };
 use anyhow::{anyhow, bail};
 use std::io::{self, Read, Write};
@@ -348,8 +348,7 @@ impl Compressor for Pipeline {
                 // `tar::unpack` has somewhere to write.
                 let final_output = match output {
                     CmprssOutput::Path(ref p) => {
-                        if c.default_extracted_target() == ExtractedTarget::Directory
-                            && !p.exists()
+                        if c.default_extracted_target() == ExtractedTarget::Directory && !p.exists()
                         {
                             std::fs::create_dir_all(p)?;
                         }
