@@ -83,6 +83,18 @@ sevenz = ["dep:sevenz-rust2", "dep:tempfile"]
 name = "cmprss"
 required-features = ["cli"]
 
+[[example]]
+name = "compress_file"
+required-features = ["gzip"]
+
+[[example]]
+name = "pipeline_from_string"
+required-features = ["tar", "gzip"]
+
+[[example]]
+name = "pipeline_manual"
+required-features = ["tar", "gzip"]
+
 [profile.dev.package."*"]
 opt-level = 3
 
