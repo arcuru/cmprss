@@ -1,10 +1,13 @@
 use super::stream::{stream_compress, stream_extract};
 use crate::progress::ProgressArgs;
 use crate::utils::{
-    CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor, LevelArgs,
-    Result, StreamCodec, StreamWriter,
+    CmprssInput, CmprssOutput, CompressionLevelValidator, Compressor, Result, StreamCodec,
+    StreamWriter,
 };
+#[cfg(feature = "cli")]
+use crate::utils::{CommonArgs, LevelArgs};
 use brotli::{CompressorWriter, Decompressor};
+#[cfg(feature = "cli")]
 use clap::Args;
 use std::io::{self, Read, Write};
 
@@ -41,6 +44,7 @@ impl CompressionLevelValidator for BrotliCompressionValidator {
     }
 }
 
+#[cfg(feature = "cli")]
 #[derive(Args, Debug)]
 pub struct BrotliArgs {
     #[clap(flatten)]
@@ -66,6 +70,7 @@ impl Default for Brotli {
     }
 }
 
+#[cfg(feature = "cli")]
 impl Brotli {
     pub fn new(args: &BrotliArgs) -> Brotli {
         Brotli {

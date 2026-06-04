@@ -1,11 +1,14 @@
 use super::stream::{stream_compress, stream_extract};
+#[cfg(feature = "cli")]
+use crate::utils::{CommonArgs, LevelArgs};
 use crate::{
     progress::ProgressArgs,
     utils::{
-        CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor,
-        DefaultCompressionValidator, LevelArgs, Result, StreamCodec, StreamWriter,
+        CmprssInput, CmprssOutput, CompressionLevelValidator, Compressor,
+        DefaultCompressionValidator, Result, StreamCodec, StreamWriter,
     },
 };
+#[cfg(feature = "cli")]
 use clap::Args;
 use std::io::{self, Read, Write};
 use xz2::read::XzDecoder;
@@ -16,6 +19,7 @@ use xz2::write::XzEncoder;
 /// which matches the behavior of `xz --lzma1 -d` / `unlzma`.
 const LZMA_DECODER_MEMLIMIT: u64 = u64::MAX;
 
+#[cfg(feature = "cli")]
 #[derive(Args, Debug)]
 pub struct LzmaArgs {
     #[clap(flatten)]
@@ -41,6 +45,7 @@ impl Default for Lzma {
     }
 }
 
+#[cfg(feature = "cli")]
 impl Lzma {
     pub fn new(args: &LzmaArgs) -> Lzma {
         Lzma {
@@ -48,7 +53,9 @@ impl Lzma {
             progress_args: args.common_args.progress_args,
         }
     }
+}
 
+impl Lzma {
     /// Build a fresh LZMA1 (`lzma_alone`) encoder stream at the configured level.
     fn encoder_stream(&self) -> Result<Stream> {
         let options = LzmaOptions::new_preset(self.level as u32)?;

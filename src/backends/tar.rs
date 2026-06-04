@@ -1,6 +1,7 @@
 extern crate tar;
 
 use anyhow::{anyhow, bail};
+#[cfg(feature = "cli")]
 use clap::Args;
 use indicatif::ProgressBar;
 use std::fs::{File, OpenOptions};
@@ -11,8 +12,11 @@ use tempfile::tempfile;
 
 use super::containers::total_input_bytes;
 use crate::progress::{OutputTarget, ProgressArgs, ProgressReader, create_progress_bar};
-use crate::utils::{CmprssInput, CmprssOutput, CommonArgs, Compressor, ExtractedTarget, Result};
+#[cfg(feature = "cli")]
+use crate::utils::CommonArgs;
+use crate::utils::{CmprssInput, CmprssOutput, Compressor, ExtractedTarget, Result};
 
+#[cfg(feature = "cli")]
 #[derive(Args, Debug)]
 pub struct TarArgs {
     #[clap(flatten)]
@@ -24,6 +28,7 @@ pub struct Tar {
     pub progress_args: ProgressArgs,
 }
 
+#[cfg(feature = "cli")]
 impl Tar {
     pub fn new(args: &TarArgs) -> Tar {
         Tar {

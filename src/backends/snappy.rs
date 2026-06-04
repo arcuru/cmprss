@@ -1,13 +1,15 @@
 use super::stream::{stream_compress, stream_extract};
 use crate::progress::ProgressArgs;
-use crate::utils::{
-    CmprssInput, CmprssOutput, CommonArgs, Compressor, Result, StreamCodec, StreamWriter,
-};
+#[cfg(feature = "cli")]
+use crate::utils::CommonArgs;
+use crate::utils::{CmprssInput, CmprssOutput, Compressor, Result, StreamCodec, StreamWriter};
+#[cfg(feature = "cli")]
 use clap::Args;
 use snap::read::FrameDecoder;
 use snap::write::FrameEncoder;
 use std::io::{self, Read, Write};
 
+#[cfg(feature = "cli")]
 #[derive(Args, Debug)]
 pub struct SnappyArgs {
     #[clap(flatten)]
@@ -19,6 +21,7 @@ pub struct Snappy {
     pub progress_args: ProgressArgs,
 }
 
+#[cfg(feature = "cli")]
 impl Snappy {
     pub fn new(args: &SnappyArgs) -> Snappy {
         Snappy {

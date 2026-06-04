@@ -35,7 +35,8 @@ jobs:
 
   # Build + test across representative feature subsets. The matrix catches
   # cfg-gating regressions that the default build would miss — e.g. a lib
-  # consumer that opts out of `full` and picks just `gzip + tar`.
+  # consumer that opts out of `full` and picks just `gzip + tar`, or one
+  # that disables `cli` to drop clap from their dep tree.
   test:
     name: Test (${{ matrix.label }})
     runs-on: ubuntu-latest
@@ -48,13 +49,15 @@ jobs:
           - label: no-default
             flags: "--no-default-features"
           - label: gzip-only
-            flags: "--no-default-features --features gzip"
+            flags: "--no-default-features --features cli,gzip"
           - label: tar-only
-            flags: "--no-default-features --features tar"
+            flags: "--no-default-features --features cli,tar"
           - label: tar+gzip
-            flags: "--no-default-features --features tar,gzip"
-          - label: full
+            flags: "--no-default-features --features cli,tar,gzip"
+          - label: full-no-cli
             flags: "--no-default-features --features full"
+          - label: cli+full
+            flags: "--no-default-features --features cli,full"
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

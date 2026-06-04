@@ -29,8 +29,16 @@
 //! ```toml
 //! cmprss = { version = "0.4", default-features = false, features = ["gzip", "tar"] }
 //! ```
+//!
+//! The CLI surface (clap-derived `XArgs` structs, `X::new(args)`
+//! constructors, `CommonArgs`, `LevelArgs`, and the `job` dispatch module)
+//! lives behind a `cli` feature that is also on by default. Library callers
+//! who don't want clap, clap_complete, or clap_mangen in their dep tree can
+//! opt out of `cli` and construct codecs via `Default::default()` plus the
+//! public fields on each codec struct.
 
 pub mod backends;
+#[cfg(feature = "cli")]
 pub mod job;
 pub mod progress;
 #[cfg(test)]
@@ -40,30 +48,54 @@ pub mod utils;
 pub use backends::{Pipeline, chain_from_ext, chain_from_format_str, compressor_from_str};
 
 #[cfg(feature = "brotli")]
-pub use backends::{Brotli, BrotliArgs};
+pub use backends::Brotli;
+#[cfg(all(feature = "brotli", feature = "cli"))]
+pub use backends::BrotliArgs;
 #[cfg(feature = "bzip2")]
-pub use backends::{Bzip2, Bzip2Args};
+pub use backends::Bzip2;
+#[cfg(all(feature = "bzip2", feature = "cli"))]
+pub use backends::Bzip2Args;
 #[cfg(feature = "gzip")]
-pub use backends::{Gzip, GzipArgs};
+pub use backends::Gzip;
+#[cfg(all(feature = "gzip", feature = "cli"))]
+pub use backends::GzipArgs;
 #[cfg(feature = "lz4")]
-pub use backends::{Lz4, Lz4Args};
+pub use backends::Lz4;
+#[cfg(all(feature = "lz4", feature = "cli"))]
+pub use backends::Lz4Args;
 #[cfg(feature = "lzma")]
-pub use backends::{Lzma, LzmaArgs};
+pub use backends::Lzma;
+#[cfg(all(feature = "lzma", feature = "cli"))]
+pub use backends::LzmaArgs;
 #[cfg(feature = "sevenz")]
-pub use backends::{SevenZ, SevenZArgs};
+pub use backends::SevenZ;
+#[cfg(all(feature = "sevenz", feature = "cli"))]
+pub use backends::SevenZArgs;
 #[cfg(feature = "snappy")]
-pub use backends::{Snappy, SnappyArgs};
+pub use backends::Snappy;
+#[cfg(all(feature = "snappy", feature = "cli"))]
+pub use backends::SnappyArgs;
 #[cfg(feature = "tar")]
-pub use backends::{Tar, TarArgs};
+pub use backends::Tar;
+#[cfg(all(feature = "tar", feature = "cli"))]
+pub use backends::TarArgs;
 #[cfg(feature = "xz")]
-pub use backends::{Xz, XzArgs};
+pub use backends::Xz;
+#[cfg(all(feature = "xz", feature = "cli"))]
+pub use backends::XzArgs;
 #[cfg(feature = "zip")]
-pub use backends::{Zip, ZipArgs};
+pub use backends::Zip;
+#[cfg(all(feature = "zip", feature = "cli"))]
+pub use backends::ZipArgs;
 #[cfg(feature = "zstd")]
-pub use backends::{Zstd, ZstdArgs};
+pub use backends::Zstd;
+#[cfg(all(feature = "zstd", feature = "cli"))]
+pub use backends::ZstdArgs;
 
 pub use utils::{
-    CmprssInput, CmprssOutput, CommonArgs, CompressionLevel, CompressionLevelValidator, Compressor,
-    DefaultCompressionValidator, ExtractedTarget, LevelArgs, PassthroughWriter, ReadWrapper,
-    Result, StreamCodec, StreamWriter, WriteWrapper,
+    CmprssInput, CmprssOutput, CompressionLevel, CompressionLevelValidator, Compressor,
+    DefaultCompressionValidator, ExtractedTarget, PassthroughWriter, ReadWrapper, Result,
+    StreamCodec, StreamWriter, WriteWrapper,
 };
+#[cfg(feature = "cli")]
+pub use utils::{CommonArgs, LevelArgs};

@@ -1,12 +1,14 @@
 use super::stream::{stream_compress, stream_extract};
 use crate::progress::ProgressArgs;
-use crate::utils::{
-    CmprssInput, CmprssOutput, CommonArgs, Compressor, Result, StreamCodec, StreamWriter,
-};
+#[cfg(feature = "cli")]
+use crate::utils::CommonArgs;
+use crate::utils::{CmprssInput, CmprssOutput, Compressor, Result, StreamCodec, StreamWriter};
+#[cfg(feature = "cli")]
 use clap::Args;
 use lz4_flex::frame::{FrameDecoder, FrameEncoder};
 use std::io::{self, Read, Write};
 
+#[cfg(feature = "cli")]
 #[derive(Args, Debug)]
 pub struct Lz4Args {
     #[clap(flatten)]
@@ -18,6 +20,7 @@ pub struct Lz4 {
     pub progress_args: ProgressArgs,
 }
 
+#[cfg(feature = "cli")]
 impl Lz4 {
     pub fn new(args: &Lz4Args) -> Lz4 {
         Lz4 {

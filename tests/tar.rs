@@ -1,4 +1,4 @@
-#![cfg(feature = "tar")]
+#![cfg(all(feature = "tar", feature = "cli"))]
 
 use assert_cmd::prelude::*;
 use assert_fs::prelude::*;

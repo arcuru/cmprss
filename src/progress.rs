@@ -1,11 +1,11 @@
-use clap::Args;
 use indicatif::{HumanBytes, ProgressBar};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::str::FromStr;
 use std::time::Duration;
 use std::time::Instant;
 
-#[derive(clap::ValueEnum, Clone, Copy, Debug, Default)]
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
+#[derive(Clone, Copy, Debug, Default)]
 pub enum ProgressDisplay {
     #[default]
     Auto,
@@ -75,14 +75,15 @@ impl FromStr for ChunkSize {
     }
 }
 
-#[derive(Args, Debug, Default, Clone, Copy)]
+#[cfg_attr(feature = "cli", derive(clap::Args))]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct ProgressArgs {
     /// Show progress.
-    #[arg(long, value_enum, default_value = "auto")]
+    #[cfg_attr(feature = "cli", arg(long, value_enum, default_value = "auto"))]
     pub progress: ProgressDisplay,
 
     /// Chunk size to use during the copy when showing the progress bar.
-    #[arg(long, default_value = "8kib")]
+    #[cfg_attr(feature = "cli", arg(long, default_value = "8kib"))]
     pub chunk_size: ChunkSize,
 }
 
