@@ -1,4 +1,4 @@
-use super::stream::{copy_stream, guard_file_output, open_input, prepare_output};
+use super::stream::{stream_compress, stream_extract};
 use crate::{
     progress::ProgressArgs,
     utils::{
@@ -95,36 +95,11 @@ impl Compressor for Xz {
     }
 
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        guard_file_output(&output, "Xz")?;
-        let (input_stream, file_size, pipeline_inner) = open_input(input, "Xz")?;
-        let (writer, target) = prepare_output(output)?;
-        let mut encoder = XzEncoder::new(writer, self.level as u32);
-        copy_stream(
-            input_stream,
-            &mut encoder,
-            file_size,
-            pipeline_inner,
-            &self.progress_args,
-            target,
-        )?;
-        encoder.finish()?;
-        Ok(())
+        stream_compress(self, "Xz", input, output, &self.progress_args)
     }
 
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        guard_file_output(&output, "Xz")?;
-        let (input_stream, file_size, pipeline_inner) = open_input(input, "Xz")?;
-        let decoder = XzDecoder::new(input_stream);
-        let (writer, target) = prepare_output(output)?;
-        copy_stream(
-            decoder,
-            writer,
-            file_size,
-            pipeline_inner,
-            &self.progress_args,
-            target,
-        )?;
-        Ok(())
+        stream_extract(self, "Xz", input, output, &self.progress_args)
     }
 }
 
