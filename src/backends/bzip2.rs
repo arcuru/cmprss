@@ -3,12 +3,13 @@ use crate::{
     progress::ProgressArgs,
     utils::{
         CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor, LevelArgs,
-        Result,
+        Result, StreamCodec, StreamWriter,
     },
 };
 use bzip2::Compression;
 use bzip2::write::{BzDecoder, BzEncoder};
 use clap::Args;
+use std::io::{self, Read, Write};
 
 /// BZip2-specific compression validator (1-9 range)
 #[derive(Debug, Clone, Copy)]
@@ -71,6 +72,40 @@ impl Bzip2 {
     }
 }
 
+struct Bzip2StreamEncoder(BzEncoder<Box<dyn StreamWriter>>);
+
+impl Write for Bzip2StreamEncoder {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
+impl StreamWriter for Bzip2StreamEncoder {
+    fn finish(self: Box<Self>) -> io::Result<()> {
+        let inner = (*self).0.finish()?;
+        inner.finish()
+    }
+}
+
+impl StreamCodec for Bzip2 {
+    fn encoder(&self, inner: Box<dyn StreamWriter>) -> io::Result<Box<dyn StreamWriter>> {
+        Ok(Box::new(Bzip2StreamEncoder(BzEncoder::new(
+            inner,
+            Compression::new(self.level as u32),
+        ))))
+    }
+
+    /// The current Compressor::extract path uses `bzip2::write::BzDecoder` (a
+    /// write-driven decoder); for the read-shaped StreamCodec API we use the
+    /// read-driven variant so the pipeline can chain it as `Read → Read`.
+    fn decoder(&self, inner: Box<dyn Read + Send>) -> io::Result<Box<dyn Read + Send>> {
+        Ok(Box::new(bzip2::read::BzDecoder::new(inner)))
+    }
+}
+
 impl Compressor for Bzip2 {
     /// Default extension for bzip2 files
     fn extension(&self) -> &str {
@@ -80,6 +115,10 @@ impl Compressor for Bzip2 {
     /// Name of this compressor
     fn name(&self) -> &str {
         "bzip2"
+    }
+
+    fn as_stream_codec(&self) -> Option<&dyn StreamCodec> {
+        Some(self)
     }
 
     /// Compress an input file or pipe to a bz2 archive
