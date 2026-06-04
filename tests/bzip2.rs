@@ -1,3 +1,5 @@
+#![cfg(feature = "bzip2")]
+
 use assert_cmd::prelude::*;
 use assert_fs::prelude::*;
 use predicates::prelude::*;
