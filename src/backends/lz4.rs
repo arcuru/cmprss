@@ -1,4 +1,4 @@
-use super::stream::{copy_stream, guard_file_output, open_input, prepare_output};
+use super::stream::{stream_compress, stream_extract};
 use crate::progress::ProgressArgs;
 use crate::utils::{
     CmprssInput, CmprssOutput, CommonArgs, Compressor, Result, StreamCodec, StreamWriter,
@@ -74,39 +74,12 @@ impl Compressor for Lz4 {
         Some(self)
     }
 
-    /// Compress an input file or pipe to a lz4 archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        guard_file_output(&output, "LZ4")?;
-        let (input_stream, file_size, pipeline_inner) = open_input(input, "LZ4")?;
-        let (writer, target) = prepare_output(output)?;
-        let mut encoder = FrameEncoder::new(writer);
-        copy_stream(
-            input_stream,
-            &mut encoder,
-            file_size,
-            pipeline_inner,
-            &self.progress_args,
-            target,
-        )?;
-        encoder.finish()?;
-        Ok(())
+        stream_compress(self, "LZ4", input, output, &self.progress_args)
     }
 
-    /// Extract a lz4 archive to an output file or pipe
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        guard_file_output(&output, "LZ4")?;
-        let (input_stream, file_size, pipeline_inner) = open_input(input, "LZ4")?;
-        let decoder = FrameDecoder::new(input_stream);
-        let (writer, target) = prepare_output(output)?;
-        copy_stream(
-            decoder,
-            writer,
-            file_size,
-            pipeline_inner,
-            &self.progress_args,
-            target,
-        )?;
-        Ok(())
+        stream_extract(self, "LZ4", input, output, &self.progress_args)
     }
 }
 
