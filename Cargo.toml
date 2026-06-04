@@ -39,7 +39,7 @@ rand = "0.10"
 tempfile = "3"
 
 [features]
-default = ["full", "interop"]
+default = ["full"]
 
 # All codecs at once — what the published CLI ships with.
 full = [
@@ -55,9 +55,6 @@ full = [
     "zip",
     "sevenz",
 ]
-
-# Reserved for interop tests against system tools; currently a no-op.
-interop = []
 
 # Single-stream codecs.
 gzip = ["dep:flate2"]
