@@ -1,11 +1,12 @@
 use super::stream::{copy_stream, guard_file_output, open_input, prepare_output};
 use crate::progress::ProgressArgs;
 use crate::utils::{
-    CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor, LevelArgs, Result,
+    CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor, LevelArgs,
+    Result, StreamCodec, StreamWriter,
 };
 use brotli::{CompressorWriter, Decompressor};
 use clap::Args;
-use std::io::Write;
+use std::io::{self, Read, Write};
 
 /// Brotli buffer size used when constructing the encoder/decoder.
 const BROTLI_BUFFER_SIZE: usize = 4096;
@@ -77,6 +78,42 @@ impl Brotli {
     }
 }
 
+struct BrotliStreamEncoder(CompressorWriter<Box<dyn StreamWriter>>);
+
+impl Write for BrotliStreamEncoder {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
+impl StreamWriter for BrotliStreamEncoder {
+    fn finish(self: Box<Self>) -> io::Result<()> {
+        // CompressorWriter::into_inner runs BROTLI_OPERATION_FINISH (writing
+        // the closing brotli frame to the inner writer) before returning it,
+        // so this both finalizes brotli and lets us cascade-finish the inner.
+        let inner = (*self).0.into_inner();
+        inner.finish()
+    }
+}
+
+impl StreamCodec for Brotli {
+    fn encoder(&self, inner: Box<dyn StreamWriter>) -> io::Result<Box<dyn StreamWriter>> {
+        Ok(Box::new(BrotliStreamEncoder(CompressorWriter::new(
+            inner,
+            BROTLI_BUFFER_SIZE,
+            self.compression_level as u32,
+            BROTLI_LGWIN,
+        ))))
+    }
+
+    fn decoder(&self, inner: Box<dyn Read + Send>) -> io::Result<Box<dyn Read + Send>> {
+        Ok(Box::new(Decompressor::new(inner, BROTLI_BUFFER_SIZE)))
+    }
+}
+
 impl Compressor for Brotli {
     /// The standard extension for brotli-compressed files.
     fn extension(&self) -> &str {
@@ -86,6 +123,10 @@ impl Compressor for Brotli {
     /// Full name for brotli.
     fn name(&self) -> &str {
         "brotli"
+    }
+
+    fn as_stream_codec(&self) -> Option<&dyn StreamCodec> {
+        Some(self)
     }
 
     /// Compress an input file or pipe to a brotli archive
