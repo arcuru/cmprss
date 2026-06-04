@@ -1,4 +1,4 @@
-use super::stream::{copy_stream, guard_file_output, open_input, prepare_output};
+use super::stream::{stream_compress, stream_extract};
 use crate::progress::ProgressArgs;
 use crate::utils::{
     CmprssInput, CmprssOutput, CommonArgs, CompressionLevelValidator, Compressor, LevelArgs,
@@ -129,44 +129,12 @@ impl Compressor for Brotli {
         Some(self)
     }
 
-    /// Compress an input file or pipe to a brotli archive
     fn compress(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        guard_file_output(&output, "Brotli")?;
-        let (input_stream, file_size, pipeline_inner) = open_input(input, "Brotli")?;
-        let (writer, target) = prepare_output(output)?;
-        let mut encoder = CompressorWriter::new(
-            writer,
-            BROTLI_BUFFER_SIZE,
-            self.compression_level as u32,
-            BROTLI_LGWIN,
-        );
-        copy_stream(
-            input_stream,
-            &mut encoder,
-            file_size,
-            pipeline_inner,
-            &self.progress_args,
-            target,
-        )?;
-        encoder.flush()?;
-        Ok(())
+        stream_compress(self, "Brotli", input, output, &self.progress_args)
     }
 
-    /// Extract a brotli archive to an output file or pipe
     fn extract(&self, input: CmprssInput, output: CmprssOutput) -> Result {
-        guard_file_output(&output, "Brotli")?;
-        let (input_stream, file_size, pipeline_inner) = open_input(input, "Brotli")?;
-        let decoder = Decompressor::new(input_stream, BROTLI_BUFFER_SIZE);
-        let (writer, target) = prepare_output(output)?;
-        copy_stream(
-            decoder,
-            writer,
-            file_size,
-            pipeline_inner,
-            &self.progress_args,
-            target,
-        )?;
-        Ok(())
+        stream_extract(self, "Brotli", input, output, &self.progress_args)
     }
 }
 
