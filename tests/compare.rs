@@ -1,3 +1,5 @@
+#![cfg(feature = "tar")]
+
 #[allow(dead_code)]
 mod compare {
     use assert_cmd::prelude::*;
