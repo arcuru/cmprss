@@ -18,6 +18,67 @@
 //! ready-to-run [`Pipeline`]) see [`chain_from_format_str`] and
 //! [`chain_from_ext`].
 //!
+//! # Quick start
+//!
+//! Single-codec compression: construct a codec with `Default::default()`
+//! (overriding any public fields you care about) and call
+//! [`Compressor::compress`] with a `CmprssInput` and `CmprssOutput`:
+//!
+//! ```no_run
+//! # #[cfg(feature = "gzip")]
+//! # fn run() -> cmprss::Result {
+//! use cmprss::{CmprssInput, CmprssOutput, Compressor, Gzip};
+//!
+//! let gz = Gzip {
+//!     compression_level: 9,
+//!     ..Gzip::default()
+//! };
+//! gz.compress(
+//!     CmprssInput::Path(vec!["input.txt".into()]),
+//!     CmprssOutput::Path("input.txt.gz".into()),
+//! )?;
+//! # Ok(()) }
+//! ```
+//!
+//! Compound formats: stack codecs into a [`Pipeline`] in innermost →
+//! outermost order. For `tar.gz` that's `[Tar, Gzip]` — tar produces the
+//! archive bytes, gzip wraps them.
+//!
+//! ```no_run
+//! # #[cfg(all(feature = "tar", feature = "gzip"))]
+//! # fn run() -> cmprss::Result {
+//! use cmprss::{CmprssInput, CmprssOutput, Compressor, Gzip, Pipeline, Tar};
+//!
+//! let pipeline = Pipeline::new(vec![
+//!     Box::new(Tar::default()),
+//!     Box::new(Gzip::default()),
+//! ]);
+//! pipeline.compress(
+//!     CmprssInput::Path(vec!["my_dir".into()]),
+//!     CmprssOutput::Path("my_dir.tar.gz".into()),
+//! )?;
+//! # Ok(()) }
+//! ```
+//!
+//! Or let [`chain_from_format_str`] turn a dotted string into the same chain:
+//!
+//! ```no_run
+//! # #[cfg(all(feature = "tar", feature = "gzip"))]
+//! # fn run() -> cmprss::Result {
+//! use cmprss::{CmprssInput, CmprssOutput, Compressor, Pipeline, chain_from_format_str};
+//!
+//! let chain = chain_from_format_str("tgz").expect("known format");
+//! let pipeline = Pipeline::with_format(chain, "tgz".to_string());
+//! pipeline.compress(
+//!     CmprssInput::Path(vec!["my_dir".into()]),
+//!     CmprssOutput::Path("my_dir.tgz".into()),
+//! )?;
+//! # Ok(()) }
+//! ```
+//!
+//! Worked examples for each of these patterns live under the crate's
+//! `examples/` directory and run via `cargo run --example <name>`.
+//!
 //! # Features
 //!
 //! Each codec is gated behind a Cargo feature of the same name (`gzip`, `xz`,
