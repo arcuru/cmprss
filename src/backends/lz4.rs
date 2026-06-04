@@ -11,9 +11,6 @@ use std::io::{self, Read, Write};
 pub struct Lz4Args {
     #[clap(flatten)]
     pub common_args: CommonArgs,
-
-    #[clap(flatten)]
-    pub progress_args: ProgressArgs,
 }
 
 #[derive(Default, Clone)]
@@ -24,7 +21,7 @@ pub struct Lz4 {
 impl Lz4 {
     pub fn new(args: &Lz4Args) -> Lz4 {
         Lz4 {
-            progress_args: args.progress_args,
+            progress_args: args.common_args.progress_args,
         }
     }
 }

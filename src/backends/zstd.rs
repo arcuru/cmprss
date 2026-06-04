@@ -40,9 +40,6 @@ pub struct ZstdArgs {
 
     #[clap(flatten)]
     pub level_args: LevelArgs,
-
-    #[clap(flatten)]
-    pub progress_args: ProgressArgs,
 }
 
 #[derive(Clone)]
@@ -65,7 +62,7 @@ impl Zstd {
     pub fn new(args: &ZstdArgs) -> Zstd {
         Zstd {
             compression_level: args.level_args.resolve(&ZstdCompressionValidator),
-            progress_args: args.progress_args,
+            progress_args: args.common_args.progress_args,
         }
     }
 }

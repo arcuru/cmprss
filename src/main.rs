@@ -109,15 +109,17 @@ enum Format {
 /// `io_list` and return the equivalent compressor chain. This gives the
 /// compound formats the same ergonomic treatment as the `tar` subcommand
 /// without cluttering `--help` with every permutation.
-fn take_format_prefix(io_list: &mut Vec<String>) -> Option<Box<dyn Compressor>> {
-    let first = io_list.first()?;
+fn take_format_prefix(args: &mut CommonArgs) -> Option<Box<dyn Compressor>> {
+    let first = args.io_list.first()?;
     if std::path::Path::new(first).exists() {
         return None;
     }
     let chain = chain_from_format_str(first)?;
     let format = first.clone();
-    io_list.remove(0);
-    Some(Box::new(Pipeline::with_format(chain, format)))
+    args.io_list.remove(0);
+    Some(Box::new(
+        Pipeline::with_format(chain, format).with_progress_args(args.progress_args),
+    ))
 }
 
 fn write_completions(shell: Shell) -> Result {
@@ -171,7 +173,7 @@ fn main() {
         Some(Format::Manpage) => write_manpage(),
         None => {
             let mut base_args = args.base_args;
-            let compressor = take_format_prefix(&mut base_args.io_list);
+            let compressor = take_format_prefix(&mut base_args);
             command(compressor, &base_args)
         }
     }

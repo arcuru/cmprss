@@ -12,9 +12,6 @@ use std::io::{self, Read, Write};
 pub struct SnappyArgs {
     #[clap(flatten)]
     pub common_args: CommonArgs,
-
-    #[clap(flatten)]
-    pub progress_args: ProgressArgs,
 }
 
 #[derive(Default, Clone)]
@@ -25,7 +22,7 @@ pub struct Snappy {
 impl Snappy {
     pub fn new(args: &SnappyArgs) -> Snappy {
         Snappy {
-            progress_args: args.progress_args,
+            progress_args: args.common_args.progress_args,
         }
     }
 }

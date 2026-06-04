@@ -16,9 +16,6 @@ pub struct GzipArgs {
 
     #[clap(flatten)]
     pub level_args: LevelArgs,
-
-    #[clap(flatten)]
-    pub progress_args: ProgressArgs,
 }
 
 #[derive(Clone)]
@@ -41,7 +38,7 @@ impl Gzip {
     pub fn new(args: &GzipArgs) -> Gzip {
         Gzip {
             compression_level: args.level_args.resolve(&DefaultCompressionValidator),
-            progress_args: args.progress_args,
+            progress_args: args.common_args.progress_args,
         }
     }
 }

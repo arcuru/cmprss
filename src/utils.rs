@@ -65,6 +65,12 @@ pub struct CommonArgs {
     /// List the contents of an archive (for container formats like tar and zip).
     #[arg(short, long)]
     pub list: bool,
+
+    /// Progress-bar settings (`--progress`, `--chunk-size`). Lives on the
+    /// shared args so codec-only pipelines (e.g. `cmprss tar.gz file.tar.gz`)
+    /// can drive the bar without going through a subcommand.
+    #[clap(flatten)]
+    pub progress_args: ProgressArgs,
 }
 
 /// Trait for validating compression levels for different compressors

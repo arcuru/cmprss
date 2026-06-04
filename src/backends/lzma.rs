@@ -22,9 +22,6 @@ pub struct LzmaArgs {
     pub common_args: CommonArgs,
 
     #[clap(flatten)]
-    progress_args: ProgressArgs,
-
-    #[clap(flatten)]
     pub level_args: LevelArgs,
 }
 
@@ -48,7 +45,7 @@ impl Lzma {
     pub fn new(args: &LzmaArgs) -> Lzma {
         Lzma {
             level: args.level_args.resolve(&DefaultCompressionValidator),
-            progress_args: args.progress_args,
+            progress_args: args.common_args.progress_args,
         }
     }
 

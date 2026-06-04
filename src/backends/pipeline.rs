@@ -1,4 +1,4 @@
-use crate::progress::{OutputTarget, copy_with_progress};
+use crate::progress::{OutputTarget, ProgressArgs, copy_with_progress};
 use crate::utils::{
     CmprssInput, CmprssOutput, Compressor, ExtractedTarget, PassthroughWriter, ReadWrapper, Result,
     StreamWriter, WriteWrapper,
@@ -29,6 +29,13 @@ pub struct Pipeline {
     /// stage's extension. `None` falls back to joining the per-stage
     /// extensions.
     format_override: Option<String>,
+    /// Explicit progress override applied to the codec-only data-copy paths
+    /// (compress + extract). When set, takes precedence over the outermost
+    /// codec's per-stage `progress_args()`. CLI codec-only invocations
+    /// (`cmprss gz.xz file`) populate this from the shared `--progress`
+    /// flag; library callers can leave it unset and configure progress per
+    /// stage instead.
+    progress_args: Option<ProgressArgs>,
 }
 
 /// `(innermost_container, surrounding_codecs)` split of a pipeline chain.
@@ -39,6 +46,7 @@ impl Clone for Pipeline {
         Pipeline {
             compressors: self.compressors.iter().map(|c| c.clone_boxed()).collect(),
             format_override: self.format_override.clone(),
+            progress_args: self.progress_args,
         }
     }
 }
@@ -48,6 +56,7 @@ impl Pipeline {
         Pipeline {
             compressors,
             format_override: None,
+            progress_args: None,
         }
     }
 
@@ -58,7 +67,29 @@ impl Pipeline {
         Pipeline {
             compressors,
             format_override: Some(format),
+            progress_args: None,
         }
+    }
+
+    /// Attach a progress configuration to this pipeline. Used by the CLI to
+    /// thread the shared `--progress` / `--chunk-size` flags through to the
+    /// codec-only copy path; if unset, the pipeline falls back to the
+    /// outermost codec's own `progress_args()`.
+    pub fn with_progress_args(mut self, progress_args: ProgressArgs) -> Self {
+        self.progress_args = Some(progress_args);
+        self
+    }
+
+    /// Resolve the `ProgressArgs` to use for codec-only chains: explicit
+    /// override first, then outermost codec's setting, then the default.
+    fn resolve_progress(&self, codecs: &[Box<dyn Compressor>]) -> ProgressArgs {
+        self.progress_args.unwrap_or_else(|| {
+            codecs
+                .last()
+                .and_then(|c| c.progress_args())
+                .copied()
+                .unwrap_or_default()
+        })
     }
 
     /// Get a string representation of the chained format (e.g., "tar.gz").
@@ -311,11 +342,7 @@ impl Compressor for Pipeline {
                 let (source, input_size) = open_source(input, self.name())?;
                 let (sink, target) = open_sink(output)?;
                 let chain = Self::build_encoder_chain(codecs, sink)?;
-                let progress = codecs
-                    .last()
-                    .and_then(|c| c.progress_args())
-                    .copied()
-                    .unwrap_or_default();
+                let progress = self.resolve_progress(codecs);
                 let mut chain = chain;
                 copy_with_progress(
                     source,
@@ -364,11 +391,7 @@ impl Compressor for Pipeline {
                 // total isn't available until we've decoded it). Same
                 // outermost-codec source for progress settings as compress().
                 let (sink, target) = open_sink(output)?;
-                let progress = codecs
-                    .last()
-                    .and_then(|c| c.progress_args())
-                    .copied()
-                    .unwrap_or_default();
+                let progress = self.resolve_progress(codecs);
                 copy_with_progress(
                     chain,
                     sink,
