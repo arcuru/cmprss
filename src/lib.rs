@@ -17,6 +17,18 @@
 //! For format-string parsing (e.g. turning `"tar.gz"` or `"tgz"` into a
 //! ready-to-run [`Pipeline`]) see [`chain_from_format_str`] and
 //! [`chain_from_ext`].
+//!
+//! # Features
+//!
+//! Each codec is gated behind a Cargo feature of the same name (`gzip`, `xz`,
+//! `bzip2`, `zstd`, `lz4`, `brotli`, `snappy`, `lzma`, `tar`, `zip`,
+//! `sevenz`). The aggregate `full` feature enables them all; that, plus
+//! `interop`, is the default. Disable default features and opt back in to a
+//! subset to shrink the dependency tree:
+//!
+//! ```toml
+//! cmprss = { version = "0.4", default-features = false, features = ["gzip", "tar"] }
+//! ```
 
 pub mod backends;
 pub mod job;
@@ -25,11 +37,31 @@ pub mod progress;
 pub mod test_utils;
 pub mod utils;
 
-pub use backends::{
-    Brotli, BrotliArgs, Bzip2, Bzip2Args, Gzip, GzipArgs, Lz4, Lz4Args, Lzma, LzmaArgs, Pipeline,
-    SevenZ, SevenZArgs, Snappy, SnappyArgs, Tar, TarArgs, Xz, XzArgs, Zip, ZipArgs, Zstd, ZstdArgs,
-    chain_from_ext, chain_from_format_str, compressor_from_str,
-};
+pub use backends::{Pipeline, chain_from_ext, chain_from_format_str, compressor_from_str};
+
+#[cfg(feature = "brotli")]
+pub use backends::{Brotli, BrotliArgs};
+#[cfg(feature = "bzip2")]
+pub use backends::{Bzip2, Bzip2Args};
+#[cfg(feature = "gzip")]
+pub use backends::{Gzip, GzipArgs};
+#[cfg(feature = "lz4")]
+pub use backends::{Lz4, Lz4Args};
+#[cfg(feature = "lzma")]
+pub use backends::{Lzma, LzmaArgs};
+#[cfg(feature = "sevenz")]
+pub use backends::{SevenZ, SevenZArgs};
+#[cfg(feature = "snappy")]
+pub use backends::{Snappy, SnappyArgs};
+#[cfg(feature = "tar")]
+pub use backends::{Tar, TarArgs};
+#[cfg(feature = "xz")]
+pub use backends::{Xz, XzArgs};
+#[cfg(feature = "zip")]
+pub use backends::{Zip, ZipArgs};
+#[cfg(feature = "zstd")]
+pub use backends::{Zstd, ZstdArgs};
+
 pub use utils::{
     CmprssInput, CmprssOutput, CommonArgs, CompressionLevel, CompressionLevelValidator, Compressor,
     DefaultCompressionValidator, ExtractedTarget, LevelArgs, PassthroughWriter, ReadWrapper,
