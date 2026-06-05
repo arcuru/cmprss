@@ -4,9 +4,13 @@ on:
     branches:
       - "**"
 
+permissions:
+  contents: read
+
 jobs:
   codeberg:
     runs-on: ubuntu-latest
+    if: github.repository_owner == 'arcuru'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
