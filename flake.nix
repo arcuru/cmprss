@@ -74,8 +74,14 @@
           ];
         };
 
-        # Build only the cargo dependencies so we can cache them all when running in CI
-        cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+        # Build only the cargo dependencies so we can cache them all when
+        # running in CI. Compile with --all-features so the artifact is a
+        # superset that every entry in `featureMatrix` below can reuse,
+        # rather than each combo rebuilding its own dep tree.
+        cargoArtifacts = craneLib.buildDepsOnly (commonArgs
+          // {
+            cargoExtraArgs = "--all-features";
+          });
 
         # Build the actual crate itself, reusing the cargoArtifacts
         cmprss = craneLib.buildPackage (commonArgs
@@ -164,6 +170,32 @@
             mkdir -p $out
           '';
 
+        # Feature subsets exercised in CI. Each combo reruns cargo nextest
+        # against the same `cargoArtifacts` deps build (compiled with
+        # --all-features above), so only cmprss itself is rebuilt per combo.
+        # Catches cfg-gating regressions a single full-features build would
+        # miss (e.g. a lib consumer that picks just `cli + gzip`).
+        featureMatrix = {
+          default = "";
+          no-default = "--no-default-features";
+          gzip-only = "--no-default-features --features cli,gzip";
+          tar-only = "--no-default-features --features cli,tar";
+          tar-gzip = "--no-default-features --features cli,tar,gzip";
+          full-no-cli = "--no-default-features --features full";
+          cli-full = "--no-default-features --features cli,full";
+        };
+
+        matrixChecks =
+          pkgs.lib.mapAttrs' (
+            label: flags:
+              pkgs.lib.nameValuePair "test-${label}" (craneLib.cargoNextest (commonArgs
+                // {
+                  pname = "cmprss-test-${label}";
+                  cargoExtraArgs = flags;
+                }))
+          )
+          featureMatrix;
+
         linters = {
           statix = mkSimpleLinter {
             name = "statix";
@@ -237,9 +269,11 @@
             inherit cmprss;
             # Build almost every package in checks, with exceptions:
             # - coverage: It requires a full rebuild, and only needs to be run occasionally
-            inherit (self.packages.${system}) clippy doc fmt test deny;
+            # - test: covered by matrixChecks.test-default below
+            inherit (self.packages.${system}) clippy doc fmt deny;
           }
-          // linters;
+          // linters
+          // matrixChecks;
 
         # This also sets up `nix fmt` to run all formatters
         treefmt = {
