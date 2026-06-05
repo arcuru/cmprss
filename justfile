@@ -89,7 +89,9 @@ lint +tools='clippy deny typos statix deadnix shellcheck actionlint':
                 ;;
             shellcheck)
                 echo "=== Running shellcheck ==="
-                find . -name "*.sh" -type f -exec shellcheck {} +
+                # Prune target/ so vendored crate sources (e.g. lzma-sys's bundled
+                # xz scripts) don't show up in the lint walk.
+                find . -path ./target -prune -o -name "*.sh" -type f -print0 | xargs -0 shellcheck
                 ;;
             actionlint)
                 echo "=== Running actionlint ==="
