@@ -54,7 +54,7 @@ impl Zip {
 }
 
 impl Zip {
-    fn file_options(&self) -> FileOptions<'static, ()> {
+    fn file_options(&self) -> FileOptions<'static, 'static, ()> {
         FileOptions::<()>::default()
             .compression_method(CompressionMethod::Deflated)
             .compression_level(Some(self.compression_level as i64))
@@ -282,7 +282,7 @@ impl Compressor for Zip {
                 }
                 let archive = ZipArchive::new(File::open(&paths[0])?)?;
                 for name in archive.file_names() {
-                    writeln!(out, "{}", name)?;
+                    writeln!(out, "{}", name?)?;
                 }
             }
             CmprssInput::Pipe(mut pipe) => {
@@ -291,7 +291,7 @@ impl Compressor for Zip {
                 temp.seek(SeekFrom::Start(0))?;
                 let archive = ZipArchive::new(temp)?;
                 for name in archive.file_names() {
-                    writeln!(out, "{}", name)?;
+                    writeln!(out, "{}", name?)?;
                 }
             }
             CmprssInput::Reader(mut reader) => {
@@ -300,7 +300,7 @@ impl Compressor for Zip {
                 temp.seek(SeekFrom::Start(0))?;
                 let archive = ZipArchive::new(temp)?;
                 for name in archive.file_names() {
-                    writeln!(out, "{}", name)?;
+                    writeln!(out, "{}", name?)?;
                 }
             }
         }
@@ -312,7 +312,7 @@ fn add_directory<W: Write + Seek>(
     zip: &mut ZipWriter<W>,
     base: &Path,
     path: &Path,
-    options: FileOptions<'static, ()>,
+    options: FileOptions<'static, 'static, ()>,
     bar: Option<&ProgressBar>,
 ) -> Result {
     for entry in std::fs::read_dir(path)? {
@@ -425,6 +425,94 @@ mod tests {
             .child("extra.txt")
             .assert(predicate::path::eq_file(extra.path()));
         Ok(())
+    }
+
+    #[cfg(unix)]
+    mod extraction_security {
+        use super::*;
+        use std::io::Cursor;
+        use std::os::unix::fs::PermissionsExt;
+
+        #[test]
+        fn rejects_external_symlink_targets() -> Result {
+            let workspace = assert_fs::TempDir::new()?;
+            let outside = workspace.child("outside.txt");
+            outside.write_str("unchanged")?;
+            std::fs::set_permissions(outside.path(), std::fs::Permissions::from_mode(0o600))?;
+
+            for (index, target) in [
+                "../outside.txt".to_owned(),
+                outside.path().to_string_lossy().into_owned(),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+                writer.add_symlink("link", target, FileOptions::<()>::default())?;
+                let reader = writer.finish()?;
+                let size = reader.get_ref().len() as u64;
+                let out_dir = workspace.child(format!("extracted-{index}"));
+
+                assert!(
+                    Zip::default()
+                        .extract_seekable(reader, size, out_dir.path())
+                        .is_err()
+                );
+                assert!(std::fs::symlink_metadata(out_dir.child("link").path()).is_err());
+                outside.assert("unchanged");
+                assert_eq!(
+                    std::fs::metadata(outside.path())?.permissions().mode() & 0o777,
+                    0o600
+                );
+            }
+            Ok(())
+        }
+
+        #[test]
+        fn strips_privileged_permission_bits() -> Result {
+            let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+            writer.start_file(
+                "file.txt",
+                FileOptions::<()>::default().unix_permissions(0o755),
+            )?;
+            writer.write_all(b"harmless test data")?;
+            let mut bytes = writer.finish()?.into_inner();
+            let header = ZipArchive::new(Cursor::new(&bytes))?
+                .by_index(0)?
+                .central_header_start() as usize;
+            // The writer masks these bits, so inject hostile Unix mode metadata
+            // into the central directory's external file attributes.
+            bytes[header + 38..header + 42].copy_from_slice(&(0o107755_u32 << 16).to_le_bytes());
+
+            let size = bytes.len() as u64;
+            let out_dir = assert_fs::TempDir::new()?;
+            Zip::default().extract_seekable(Cursor::new(bytes), size, out_dir.path())?;
+            out_dir.child("file.txt").assert("harmless test data");
+            let mode = std::fs::metadata(out_dir.child("file.txt").path())?
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o7000, 0);
+            assert_eq!(mode & 0o777, 0o755);
+            Ok(())
+        }
+
+        #[test]
+        fn preserves_internal_symlinks() -> Result {
+            let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+            writer.start_file("file.txt", FileOptions::<()>::default())?;
+            writer.write_all(b"internal target")?;
+            writer.add_symlink("link", "file.txt", FileOptions::<()>::default())?;
+            let reader = writer.finish()?;
+            let size = reader.get_ref().len() as u64;
+            let out_dir = assert_fs::TempDir::new()?;
+            Zip::default().extract_seekable(reader, size, out_dir.path())?;
+
+            let link = out_dir.child("link");
+            assert!(std::fs::symlink_metadata(link.path())?.is_symlink());
+            assert_eq!(std::fs::read_link(link.path())?, Path::new("file.txt"));
+            link.assert("internal target");
+            Ok(())
+        }
     }
 
     /// Test zip-specific functionality: directory handling
