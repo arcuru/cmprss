@@ -1,26 +1,7 @@
-# Publish workflow — publishes release artifacts.
-#
-# Jobs:
-#   - snap: builds and publishes the snap package to the Snap Store.
-#   - binaries: builds static musl binaries via Nix and attaches them to the
-#     GitHub Release. Runs only on release events (not on push validation).
-#
-# Triggers:
-#   1. workflow_run: After Nix CI passes on main. Builds the snap to validate
-#      the packaging pipeline on every push to main. The binaries job is
-#      skipped on this trigger.
-#
-#   2. workflow_dispatch: Triggered by the release-plz workflow after a release
-#      is created, or manually for retrying a failed release. Accepts a tag name
-#      input and publishes the snap and uploads binaries for that tag.
-#
-#   3. release (published): Kept as a fallback trigger in case the release is
-#      created with a token that fires events (e.g. a PAT or GitHub App token).
-#
-# Note: release-plz uses GITHUB_TOKEN, so releases it creates do not fire the
-# release event (GitHub Actions limitation). The release-plz workflow explicitly
-# dispatches this workflow instead.
-
+# release-plz creates drafts with GITHUB_TOKEN, which cannot trigger release
+# workflows. Its explicit dispatch assembles both binaries, then publishes once.
+# release.published is a read-only asset verification fallback (plus Snap), not
+# an opportunity to attach or replace assets on an immutable release.
 name: Publish
 
 on:
@@ -33,48 +14,78 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Release tag to retry (e.g. v1.2.3)"
+        description: "Draft release tag to assemble/retry (e.g. v1.2.3)"
         required: true
+        type: string
+      commit_sha:
+        description: "Expected tag commit (optional for manual retries)"
+        required: false
         type: string
 
 permissions:
   contents: read
 
+# Retries and the published fallback must not race another assembly of this tag.
+concurrency:
+  group: publish-${{ github.event.release.tag_name || inputs.tag_name || github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
 jobs:
-  snap:
-    name: Snap
+  prepare:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: |
       github.repository_owner == 'arcuru' &&
-      (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+      ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+       github.event_name == 'release')
+    outputs:
+      sha: ${{ steps.release.outputs.sha || steps.ci.outputs.sha }}
+      tag: ${{ steps.release.outputs.tag }}
+      release_id: ${{ steps.release.outputs.release_id }}
+      draft: ${{ steps.release.outputs.draft }}
+    steps:
+      # Always load control code from trusted main, never from a dispatched tag.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve successful CI commit
+        id: ci
+        if: github.event_name == 'workflow_run'
+        env:
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: echo "sha=$RUN_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve and inspect release
+        id: release
+        if: github.event_name != 'workflow_run'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag_name }}
+          SHA: ${{ inputs.commit_sha }}
+        run: python3 .github/scripts/release.py prepare --tag "$TAG" --sha "$SHA"
+
+  snap:
+    name: Snap
+    needs: prepare
+    runs-on: ubuntu-latest
+    if: github.repository_owner == 'arcuru'
     environment: ${{ (github.event_name == 'release' || github.event_name == 'workflow_dispatch') && 'publish' || '' }}
     permissions:
       contents: read
     steps:
-      - name: Resolve ref
-        id: ref
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          INPUT_TAG: ${{ inputs.tag_name }}
-          RUN_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-        run: |
-          if [[ "$EVENT_NAME" == "release" ]]; then
-            echo "ref=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-          elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            echo "ref=$INPUT_TAG" >> "$GITHUB_OUTPUT"
-          else
-            echo "ref=$RUN_SHA" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ steps.ref.outputs.ref }}
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
 
       - name: Set snap version from release tag
         if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
         env:
-          TAG: ${{ github.event.release.tag_name || inputs.tag_name }}
+          TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           VERSION="${TAG#v}"
           sed -i "s/^version: .*/version: \"${VERSION}\"/" snap/snapcraft.yaml
@@ -98,10 +109,10 @@ jobs:
 
   binaries:
     name: Binary (${{ matrix.target }})
+    needs: prepare
     runs-on: ${{ matrix.runner }}
-    if: |
-      github.repository_owner == 'arcuru' &&
-      (github.event_name == 'release' || github.event_name == 'workflow_dispatch')
+    timeout-minutes: 60
+    if: github.repository_owner == 'arcuru' && needs.prepare.outputs.draft == 'true'
     permissions:
       contents: write
     strategy:
@@ -113,23 +124,17 @@ jobs:
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
     steps:
-      - name: Resolve tag
-        id: tag
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          INPUT_TAG: ${{ inputs.tag_name }}
-        run: |
-          if [[ "$EVENT_NAME" == "release" ]]; then
-            TAG="$RELEASE_TAG"
-          else
-            TAG="$INPUT_TAG"
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ steps.tag.outputs.tag }}
+          ref: ${{ needs.prepare.outputs.sha }}
+          path: source
+          persist-credentials: false
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
@@ -138,12 +143,13 @@ jobs:
         uses: DeterminateSystems/magic-nix-cache-action@565684385bcd71bad329742eefe8d12f2e765b39 # v13
 
       - name: Build static binary
+        working-directory: source
         run: nix build -L .#cmprss-static
 
       - name: Package binary
-        id: pkg
+        working-directory: source
         env:
-          TAG: ${{ steps.tag.outputs.tag }}
+          TAG: ${{ needs.prepare.outputs.tag }}
           TARGET: ${{ matrix.target }}
         run: |
           DIR="cmprss-${TAG}-${TARGET}"
@@ -153,13 +159,41 @@ jobs:
           cp README.md LICENSE.txt "${DIR}/"
           tar -czf "$ASSET" "$DIR"
           sha256sum "$ASSET" > "${ASSET}.sha256"
-          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
 
-      - name: Upload to GitHub Release
+      - name: Upload to draft only
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.tag.outputs.tag }}
-          ASSET: ${{ steps.pkg.outputs.asset }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          SHA: ${{ needs.prepare.outputs.sha }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+          TARGET: ${{ matrix.target }}
         run: |
-          gh release upload "$TAG" "$ASSET" "${ASSET}.sha256" \
-            --clobber --repo "$GITHUB_REPOSITORY"
+          python3 .github/scripts/release.py upload --tag "$TAG" --sha "$SHA" \
+            --release-id "$RELEASE_ID" --target "$TARGET" --directory source
+
+  finalize:
+    name: Verify assets and publish
+    needs: [prepare, binaries]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Implicit success() also suppresses publication after cancellation/failure.
+    # No individual matrix leg can publish, and Snap is not part of this join.
+    if: github.repository_owner == 'arcuru' && needs.binaries.result == 'success'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify every required asset, then publish once
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          SHA: ${{ needs.prepare.outputs.sha }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+        run: |
+          python3 .github/scripts/release.py finalize --tag "$TAG" --sha "$SHA" \
+            --release-id "$RELEASE_ID"

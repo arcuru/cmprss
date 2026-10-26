@@ -197,6 +197,11 @@
           featureMatrix;
 
         linters = {
+          release-workflows = mkSimpleLinter {
+            name = "release-workflows";
+            packages = [(pkgs.python3.withPackages (p: [p.pyyaml]))];
+            command = "python3 -m unittest discover -s .github/scripts -p 'test_*.py' -v";
+          };
           statix = mkSimpleLinter {
             name = "statix";
             packages = [pkgs.statix];
