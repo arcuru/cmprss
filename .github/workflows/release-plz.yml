@@ -15,6 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository_owner == 'arcuru' && (github.event_name == 'push' || github.ref == 'refs/heads/main')
     environment: publish
+    concurrency:
+      group: release-plz-release
+      cancel-in-progress: false
     permissions:
       actions: write
       contents: write
@@ -51,8 +54,10 @@ jobs:
           RELEASES: ${{ steps.release-plz.outputs.releases }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG=$(echo "$RELEASES" | jq -r '.[0].tag_name')
-          gh workflow run publish.yml -f tag_name="$TAG"
+          TAG=$(echo "$RELEASES" | jq -er '.[0].tag_name')
+          git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
+          SHA=$(git rev-parse "refs/tags/$TAG^{commit}")
+          gh workflow run publish.yml --ref main -f tag_name="$TAG" -f commit_sha="$SHA"
 
   release-plz-pr:
     name: Release-plz PR

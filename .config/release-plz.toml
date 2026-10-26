@@ -31,6 +31,8 @@ changelog_config = ".config/cliff.toml"
 
 # Customize GitHub release
 git_release_type = "auto"
+# Assets must be assembled before immutable publication.
+git_release_draft = true
 git_release_body = """
 {{ changelog }}
 
