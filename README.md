@@ -1,6 +1,6 @@
 # cmprss
 
-[![build](https://img.shields.io/github/actions/workflow/status/atuinsh/atuin/rust.yml?style=flat-square)](https://github.com/arcuru/cmprss/actions?query=workflow%3ANix)
+[![build](https://img.shields.io/github/actions/workflow/status/arcuru/cmprss/nix.yml?style=flat-square)](https://github.com/arcuru/cmprss/actions/workflows/nix.yml)
 [![crates.io](https://img.shields.io/crates/v/cmprss.svg?style=flat-square)](https://crates.io/crates/cmprss)
 [![coverage](https://img.shields.io/codecov/c/github/arcuru/cmprss)](https://codecov.io/gh/arcuru/cmprss)
 ![license](https://img.shields.io/github/license/arcuru/cmprss)
